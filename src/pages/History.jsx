@@ -31,6 +31,8 @@ const VIEWS = [
   { id: "diet", label: "Diet", icon: Utensils },
   { id: "pantry", label: "Pantry", icon: ShoppingBag },
   { id: "you", label: "You", icon: User },
+  { id: "meds", label: "Meds", icon: Pill },
+  { id: "supps", label: "Supps", icon: Pill },
 ];
 
 // Global filter shape: { mode: "preset" | "custom", days?, from?, to? }
@@ -98,7 +100,7 @@ export function History() {
           subtitle={`Per-section history & summary · ${filterLabel(filter)}`}
         />
         {/* Tab pills */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
+        <div className="grid grid-cols-3 md:grid-cols-6 gap-2 mb-3">
           {VIEWS.map((v) => {
             const Icon = v.icon;
             return (
@@ -199,6 +201,10 @@ export function History() {
       )}
       {view === "you" && (
         <YouHistory profile={profile} weightLog={weightLog} meds={meds} filter={filter} />
+      )}
+      {view === "meds" && <PharmaHistory category="med" label="Meds" meds={meds} filter={filter} />}
+      {view === "supps" && (
+        <PharmaHistory category="supplement" label="Supplements" meds={meds} filter={filter} />
       )}
     </>
   );
@@ -769,23 +775,137 @@ function YouHistory({ profile, weightLog, meds, filter }) {
         )}
       </Card>
 
+      {dosesInWindow.length > 0 && (
+        <Card>
+          <CardHeader
+            kicker="See also"
+            title="Detailed dose logs"
+            subtitle="Per-med adherence and dose-by-dose lists live on the dedicated tabs."
+          />
+          <p className="font-body text-sm text-ink-muted">
+            {dosesInWindow.filter((d) => (d.category || "med") === "med").length} medication
+            dose{dosesInWindow.filter((d) => (d.category || "med") === "med").length === 1 ? "" : "s"}{" "}
+            ·{" "}
+            {dosesInWindow.filter((d) => (d.category || "med") === "supplement").length}{" "}
+            supplement dose
+            {dosesInWindow.filter((d) => (d.category || "med") === "supplement").length === 1 ? "" : "s"}{" "}
+            in window. Switch to the <strong>Meds</strong> or <strong>Supps</strong>{" "}
+            tabs above for adherence summaries and per-dose timestamps.
+          </p>
+        </Card>
+      )}
+    </>
+  );
+}
+
+// ============================================================================
+// PharmaHistory — single component, used by both Meds and Supps tabs via the
+// `category` prop. Loads dose entries across all `meds:taken:*` localStorage
+// keys, filters to the active category, and renders adherence + dose log.
+// ============================================================================
+
+function PharmaHistory({ category, label, meds, filter }) {
+  const range = filterRange(filter);
+
+  const dosesInWindow = useMemo(() => {
+    const keys = listKeys("meds:taken:");
+    const out = [];
+    for (const k of keys) {
+      const day = k.replace("meds:taken:", "");
+      const entries = load(k, []);
+      for (const e of entries) {
+        if ((e.category || "med") !== category) continue;
+        if (e.takenAt >= range.from && e.takenAt <= range.to) {
+          out.push({ ...e, day });
+        }
+      }
+    }
+    return out.sort((a, b) => b.takenAt - a.takenAt);
+  }, [range.from, range.to, category, meds]);
+
+  // Aggregate per-med stats
+  const dosesByMed = useMemo(() => {
+    const out = {};
+    for (const d of dosesInWindow) {
+      if (!out[d.medId]) {
+        out[d.medId] = {
+          name: d.medName,
+          type: d.type,
+          count: 0,
+          qty: 0,
+          unit: d.unit,
+          lastAt: 0,
+        };
+      }
+      out[d.medId].count++;
+      out[d.medId].qty += Number(d.quantity) || 0;
+      if (d.takenAt > out[d.medId].lastAt) out[d.medId].lastAt = d.takenAt;
+    }
+    return out;
+  }, [dosesInWindow]);
+
+  // Active items in this category from the live meds list (for the Active row)
+  const itemsInCategory = useMemo(
+    () => meds.filter((m) => (m.category || "med") === category),
+    [meds, category],
+  );
+
+  // Days with at least one dose
+  const daysWithDose = useMemo(() => {
+    const set = new Set();
+    for (const d of dosesInWindow) set.add(d.day);
+    return set.size;
+  }, [dosesInWindow]);
+
+  const totalDoses = dosesInWindow.length;
+
+  return (
+    <>
+      <Card>
+        <CardHeader
+          kicker={`${label} log`}
+          title={filterLabel(filter)}
+          subtitle={`${totalDoses} dose${totalDoses === 1 ? "" : "s"} across ${daysWithDose} day${daysWithDose === 1 ? "" : "s"}${itemsInCategory.length > 0 ? ` · ${itemsInCategory.length} ${label.toLowerCase()} configured` : ""}`}
+        />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <Stat label="Doses" value={totalDoses} accent="#3b6aa3" />
+          <Stat label="Days with a dose" value={daysWithDose} accent="#4a6b3e" />
+          <Stat
+            label="Unique items"
+            value={Object.keys(dosesByMed).length}
+            accent="#6b5a3e"
+          />
+          <Stat label="Configured" value={itemsInCategory.length} />
+        </div>
+      </Card>
+
       {Object.keys(dosesByMed).length > 0 && (
         <Card>
-          <CardHeader kicker="Medications" title="Adherence by Med" />
+          <CardHeader
+            kicker="Adherence"
+            title={`Per ${label.toLowerCase().replace(/s$/, "")}`}
+          />
           <ul className="divide-y divide-ink/30 border-y border-ink/30">
             {Object.values(dosesByMed)
               .sort((a, b) => b.count - a.count)
               .map((m, i) => (
                 <li key={i} className="py-2 flex items-center gap-3">
                   <Pill size={16} className="text-accent" />
-                  <div className="flex-1">
+                  <div className="flex-1 min-w-0">
                     <div className="font-body text-base">{m.name}</div>
                     <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted">
                       {m.type}
+                      {" · last "}
+                      {new Date(m.lastAt).toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                      })}
                     </div>
                   </div>
-                  <span className="font-mono text-[10px] uppercase tracking-[0.2em]">
-                    {m.count} dose{m.count === 1 ? "" : "s"} · {m.qty.toFixed(1)} {m.unit} total
+                  <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-right">
+                    {m.count} dose{m.count === 1 ? "" : "s"}
+                    <br />
+                    {m.qty.toFixed(1)} {m.unit}
                   </span>
                 </li>
               ))}
@@ -794,12 +914,14 @@ function YouHistory({ profile, weightLog, meds, filter }) {
       )}
 
       <Card>
-        <CardHeader kicker="Doses" title="Recent Dose Log" />
+        <CardHeader kicker="Recent" title={`${label} dose log`} />
         {dosesInWindow.length === 0 ? (
-          <p className="font-body italic text-ink-muted">No doses logged in this window.</p>
+          <p className="font-body italic text-ink-muted">
+            No {label.toLowerCase()} doses logged in this window.
+          </p>
         ) : (
-          <ul className="divide-y divide-ink/30 border-y border-ink/30">
-            {dosesInWindow.slice(0, 30).map((d) => (
+          <ul className="divide-y divide-ink/30 border-y border-ink/30 max-h-[28rem] overflow-y-auto">
+            {dosesInWindow.slice(0, 100).map((d) => (
               <li key={d.id} className="py-2 flex items-center gap-3">
                 <Pill size={14} />
                 <div className="flex-1 min-w-0">
@@ -813,6 +935,7 @@ function YouHistory({ profile, weightLog, meds, filter }) {
                     {new Date(d.takenAt).toLocaleString("en-US", {
                       month: "short",
                       day: "numeric",
+                      year: "numeric",
                       hour: "numeric",
                       minute: "2-digit",
                     })}
