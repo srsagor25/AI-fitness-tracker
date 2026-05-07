@@ -146,6 +146,8 @@ export const SAIDUR_PROFILE = {
   windowStart: "13:00",
   windowEnd: "21:00",
   waterTarget: 8,
+  mealTimes: { lunch: "13:30", shake: "16:30", dinner: "19:30" },
+  workoutTime: "18:00",
   workoutAppUrl: "https://workout-cyan-tau.vercel.app/",
   proteinTarget: 180,
   cheatBaselineKcal: 1019,
@@ -180,6 +182,8 @@ export const BLANK_PROFILE = {
   windowStart: "",
   windowEnd: "",
   waterTarget: 8,
+  mealTimes: { lunch: "13:00", shake: "16:00", dinner: "19:00" },
+  workoutTime: "",
   workoutAppUrl: "",
   proteinTarget: 150,
   cheatBaselineKcal: 1000,
@@ -213,10 +217,34 @@ export function cloneTemplate(template) {
   return JSON.parse(JSON.stringify(template));
 }
 
+// Look up a food by key, merging the base FOODS entry with any user override.
+// If a key is not in FOODS but exists in overrides with a `display` field, it
+// is treated as an entirely user-added food. Returns null for unknown keys.
+export function getFood(key, overrides = {}) {
+  const base = FOODS[key];
+  const ovr = overrides[key];
+  if (base && ovr) return { ...base, ...ovr, key };
+  if (base) return { ...base, key };
+  if (ovr && ovr.display) return { key, ...ovr };
+  return null;
+}
+
+// Returns the merged list of all foods (base + user-added), suitable for pickers.
+export function getAllFoods(overrides = {}) {
+  const out = Object.values(FOODS).map((f) => ({ ...f }));
+  const seen = new Set(Object.keys(FOODS));
+  for (const k of Object.keys(overrides)) {
+    if (!seen.has(k) && overrides[k]?.display) {
+      out.push({ key: k, ...overrides[k] });
+    }
+  }
+  return out;
+}
+
 // Compute a meal's macros from its items array (food key + amount).
-// `overrides` is a map of foodKey → { kcal, protein, fat, carbs } user edits
-// (from `foods:custom` localStorage). Fields not present in the override
-// fall back to the base FOODS entry. Direct items embed their own macros.
+// `overrides` is the customFoods map: it can hold partial overrides for base
+// foods OR complete entries for entirely user-added foods. Direct items embed
+// their own macros and ignore overrides.
 export function calcMeal(items, overrides = {}) {
   const out = { kcal: 0, protein: 0, fat: 0, carbs: 0 };
   if (!items) return out;
@@ -229,14 +257,13 @@ export function calcMeal(items, overrides = {}) {
       out.carbs += (Number(it.carbs) || 0) * a;
       continue;
     }
-    const base = FOODS[it.food];
-    if (!base) continue;
-    const ovr = overrides[it.food] || {};
+    const f = getFood(it.food, overrides);
+    if (!f) continue;
     const amt = Number(it.amount) || 0;
-    out.kcal += (Number(ovr.kcal ?? base.kcal) || 0) * amt;
-    out.protein += (Number(ovr.protein ?? base.protein) || 0) * amt;
-    out.fat += (Number(ovr.fat ?? base.fat ?? 0)) * amt;
-    out.carbs += (Number(ovr.carbs ?? base.carbs ?? 0)) * amt;
+    out.kcal += (Number(f.kcal) || 0) * amt;
+    out.protein += (Number(f.protein) || 0) * amt;
+    out.fat += (Number(f.fat) || 0) * amt;
+    out.carbs += (Number(f.carbs) || 0) * amt;
   }
   return out;
 }

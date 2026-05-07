@@ -9,7 +9,7 @@ import { Plus, Trash2, Save } from "lucide-react";
 const SLOTS = ["lunch", "shake", "dinner", "snack"];
 
 export function Build() {
-  const { addMealToSlot, dayTotals, dailyTargetKcal, profile, calc } = useApp();
+  const { addMealToSlot, dayTotals, dailyTargetKcal, profile, calc, customFoods } = useApp();
 
   const [name, setName] = useState("");
   const [icon, setIcon] = useState("✏️");
@@ -17,7 +17,7 @@ export function Build() {
   const [items, setItems] = useState([]);
 
   function addItem(foodKey) {
-    const f = FOODS[foodKey];
+    const f = FOODS[foodKey] || customFoods[foodKey];
     if (!f) return;
     const defaultAmount = f.unit === "pc" || f.unit === "tbsp" || f.unit === "tsp" || f.unit === "cup" || f.unit === "slice" ? 1 : 100;
     setItems((prev) => [...prev, { food: foodKey, amount: defaultAmount }]);
@@ -52,8 +52,12 @@ export function Build() {
       "Dairy / Nuts": ["milk", "cashew", "dates", "peanut"],
       "Fresh / Sauce": ["cucumber", "fruit_mixed", "sauce"],
     };
+    const userAdded = Object.keys(customFoods).filter(
+      (k) => !FOODS[k] && customFoods[k]?.display,
+    );
+    if (userAdded.length) out["Your Added Foods"] = userAdded;
     return out;
-  }, []);
+  }, [customFoods]);
 
   function logIt() {
     if (!name.trim() || items.length === 0) return;
@@ -116,7 +120,7 @@ export function Build() {
         ) : (
           <ul className="divide-y divide-ink/30 border-y border-ink/30 mb-3">
             {items.map((it, i) => {
-              const f = FOODS[it.food];
+              const f = FOODS[it.food] || customFoods[it.food] || { display: it.food, unit: "" };
               const t = calc([it]);
               return (
                 <li key={i} className="py-2 flex items-center gap-2">
@@ -165,7 +169,7 @@ export function Build() {
               </h4>
               <div className="flex flex-wrap gap-2">
                 {keys.map((k) => {
-                  const f = FOODS[k];
+                  const f = FOODS[k] || customFoods[k];
                   if (!f) return null;
                   return (
                     <button

@@ -4,7 +4,7 @@ import { Card, CardHeader, Stat } from "../components/ui/Card.jsx";
 import { Button, IconButton } from "../components/ui/Button.jsx";
 import { Field, TextInput, Select, Chip, ProgressBar } from "../components/ui/Field.jsx";
 import { Modal } from "../components/ui/Modal.jsx";
-import { FOODS } from "../store/profiles.js";
+import { FOODS, getAllFoods } from "../store/profiles.js";
 import { analyzeFoodPhoto, suggestEatOut, fileToResizedBase64 } from "../lib/aiVision.js";
 import {
   Plus,
@@ -371,7 +371,7 @@ export function Diet() {
                     </Button>
                   )}
                   <Button variant="outline" size="sm" onClick={() => setCustomModal({ slot: slot.id })}>
-                    <Plus size={12} /> Custom
+                    <Plus size={12} /> Add Ingredients
                   </Button>
                   <Button variant="outline" size="sm" onClick={() => setPhotoModal({ slot: slot.id })}>
                     <Camera size={12} /> Photo
@@ -456,6 +456,7 @@ export function Diet() {
 }
 
 function ItemList({ items }) {
+  const { customFoods } = useApp();
   if (!items || items.length === 0) return null;
   return (
     <div className="flex flex-wrap gap-1.5 mt-1">
@@ -467,7 +468,7 @@ function ItemList({ items }) {
             </Chip>
           );
         }
-        const f = FOODS[it.food];
+        const f = FOODS[it.food] || (customFoods[it.food]?.display ? { ...customFoods[it.food] } : null);
         if (!f) return null;
         return (
           <Chip key={i} color="#6b5a3e">
@@ -517,9 +518,11 @@ function PresetPickerModal({ slot, presets, onClose, onPick }) {
 }
 
 function CustomMealModal({ slot, onClose, onSave }) {
-  const { calc } = useApp();
+  const { calc, customFoods } = useApp();
+  const allFoods = useMemo(() => getAllFoods(customFoods), [customFoods]);
+  const firstKey = allFoods[0]?.key || Object.keys(FOODS)[0];
   const [name, setName] = useState("");
-  const [items, setItems] = useState([{ food: Object.keys(FOODS)[0], amount: 100 }]);
+  const [items, setItems] = useState([{ food: firstKey, amount: 100 }]);
   const [direct, setDirect] = useState(false);
   const [directKcal, setDirectKcal] = useState("");
   const [directProtein, setDirectProtein] = useState("");
@@ -527,7 +530,7 @@ function CustomMealModal({ slot, onClose, onSave }) {
   const [directCarbs, setDirectCarbs] = useState("");
 
   function addItem() {
-    setItems([...items, { food: Object.keys(FOODS)[0], amount: 100 }]);
+    setItems([...items, { food: firstKey, amount: 100 }]);
   }
   function updateItem(idx, patch) {
     const copy = [...items];
@@ -618,7 +621,7 @@ function CustomMealModal({ slot, onClose, onSave }) {
         ) : (
           <div className="space-y-2">
             {items.map((it, i) => {
-              const f = FOODS[it.food];
+              const f = allFoods.find((x) => x.key === it.food);
               const t = calc([it]);
               return (
                 <div key={i} className="flex gap-2 items-end">
@@ -627,7 +630,7 @@ function CustomMealModal({ slot, onClose, onSave }) {
                     onChange={(e) => updateItem(i, { food: e.target.value })}
                     className="flex-1"
                   >
-                    {Object.values(FOODS).map((f) => (
+                    {allFoods.map((f) => (
                       <option key={f.key} value={f.key}>
                         {f.display}
                       </option>

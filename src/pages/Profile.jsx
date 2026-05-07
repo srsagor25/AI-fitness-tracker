@@ -103,6 +103,34 @@ export function Profile() {
               onChange={(e) => update({ waterTarget: Number(e.target.value) || 0 })}
             />
           </Field>
+          <Field label="Lunch time">
+            <TextInput
+              type="time"
+              value={profile.mealTimes?.lunch || ""}
+              onChange={(e) => update({ mealTimes: { ...(profile.mealTimes || {}), lunch: e.target.value } })}
+            />
+          </Field>
+          <Field label="Shake time">
+            <TextInput
+              type="time"
+              value={profile.mealTimes?.shake || ""}
+              onChange={(e) => update({ mealTimes: { ...(profile.mealTimes || {}), shake: e.target.value } })}
+            />
+          </Field>
+          <Field label="Dinner time">
+            <TextInput
+              type="time"
+              value={profile.mealTimes?.dinner || ""}
+              onChange={(e) => update({ mealTimes: { ...(profile.mealTimes || {}), dinner: e.target.value } })}
+            />
+          </Field>
+          <Field label="Workout time (optional)">
+            <TextInput
+              type="time"
+              value={profile.workoutTime || ""}
+              onChange={(e) => update({ workoutTime: e.target.value })}
+            />
+          </Field>
           <Field label="Public label">
             <TextInput value={profile.publicLabel} onChange={(e) => update({ publicLabel: e.target.value })} />
           </Field>
