@@ -10,7 +10,6 @@ import {
   Plus,
   Trash2,
   Coffee,
-  Footprints,
   Camera,
   Sparkles,
   AlertTriangle,
@@ -39,8 +38,6 @@ export function Diet() {
     addCoffeeEntry,
     removeCoffeeEntry,
     toggleCoffeeSchedule,
-    steps,
-    setSteps,
     stepAdjustKcal,
     waterLog,
     addWaterEntry,
@@ -160,48 +157,20 @@ export function Diet() {
           ))}
         </div>
 
-        {/* Step counter */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-          <div className="border-2 border-ink p-3 md:col-span-2">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <Footprints size={14} />
-                <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted">
-                  Steps Today
-                </span>
-              </div>
-              {stepAdjustKcal !== 0 && (
-                <Chip color={stepAdjustKcal > 0 ? "#4a6b3e" : "#c44827"}>
-                  {stepAdjustKcal > 0 ? "+" : ""}
-                  {stepAdjustKcal} kcal
-                </Chip>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={() => setSteps(Math.max(0, steps - 1000))}>
-                −1k
-              </Button>
-              <input
-                type="number"
-                value={steps}
-                onChange={(e) => setSteps(Math.max(0, Number(e.target.value) || 0))}
-                className="flex-1 border-2 border-ink bg-paper px-2 py-1.5 font-display text-2xl font-black text-center"
-              />
-              <Button variant="outline" size="sm" onClick={() => setSteps(steps + 1000)}>
-                +1k
-              </Button>
-            </div>
-            <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted mt-1 italic">
-              Baseline {profile.stepAdjust?.baseline?.toLocaleString() || "—"} ·{" "}
-              {profile.stepAdjust?.lowThreshold?.toLocaleString() || "—"} low ·{" "}
-              {profile.stepAdjust?.highThreshold?.toLocaleString() || "—"} high
-            </div>
-          </div>
+        {/* Daily target callout (steps & workouts are tracked under Activity) */}
+        <div className="mb-4">
           <Stat label="Daily Target" value={dailyTargetKcal} suffix="kcal" accent="#3b6aa3" />
+          {(stepAdjustKcal !== 0 || todaysWorkoutKcal > 0) && (
+            <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted mt-2 italic">
+              Includes {stepAdjustKcal !== 0 && `${stepAdjustKcal > 0 ? "+" : ""}${stepAdjustKcal} kcal step adjust`}
+              {stepAdjustKcal !== 0 && todaysWorkoutKcal > 0 && " · "}
+              {todaysWorkoutKcal > 0 && `+${Math.round(todaysWorkoutKcal)} kcal from training`}
+            </div>
+          )}
         </div>
 
         {/* Macros */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-3 gap-3">
           <Stat label="Eaten" value={Math.round(dayTotals.kcal)} suffix="kcal" />
           <Stat
             label="Protein"
@@ -214,12 +183,6 @@ export function Diet() {
             value={Math.abs(Math.round(remaining))}
             suffix="kcal"
             accent={remaining >= 0 ? "#4a6b3e" : "#c44827"}
-          />
-          <Stat
-            label="Workout +"
-            value={Math.round(todaysWorkoutKcal)}
-            suffix="kcal"
-            accent="#6b5a3e"
           />
         </div>
 

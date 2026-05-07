@@ -33,7 +33,7 @@ const TAB_GROUPS = [
     ],
   },
   {
-    label: "Training",
+    label: "Activity",
     tabs: [
       { id: "workout", label: "Workout" },
       { id: "programs", label: "Programs" },
