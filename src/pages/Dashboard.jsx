@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useApp } from "../store/AppContext.jsx";
 import { Card, CardHeader, Stat } from "../components/ui/Card.jsx";
 import { Button } from "../components/ui/Button.jsx";
@@ -56,6 +56,12 @@ export function Dashboard({ setTab }) {
     medsTakenToday,
     grocery,
     customFoods,
+    addWaterEntry,
+    addCoffeeEntry,
+    setSteps,
+    addMeasurement,
+    sleep,
+    setSleepEntry,
   } = useApp();
 
   const remaining = dailyTargetKcal - dayTotals.kcal;
@@ -334,75 +340,32 @@ export function Dashboard({ setTab }) {
           }
         />
 
-        {/* Eating side */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div className="border-2 border-ink p-4 bg-paper">
-            <div className="flex items-baseline justify-between gap-2 mb-2">
-              <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted">
-                Eating · Calories In
-              </span>
-              <span className="font-mono text-[10px] uppercase tracking-[0.25em]" style={{ color: overEat > 0 ? "#c44827" : "#4a6b3e" }}>
-                {overEat > 0 ? `OVER ${overEat}` : `${Math.abs(overEat)} LEFT`}
-              </span>
-            </div>
-            <div className="flex items-baseline gap-2">
-              <span className="font-display text-4xl md:text-5xl font-black leading-none">
-                {eaten}
-              </span>
-              <span className="font-mono text-xs uppercase tracking-widest text-ink-muted">
-                / {eatTarget} kcal
-              </span>
-            </div>
-            <ProgressBar value={eaten} max={eatTarget} />
-            <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted mt-2">
-              {dayType?.label} target {Math.round(dailyTargetKcal - todaysWorkoutKcal)}
-              {todaysWorkoutKcal > 0 ? ` + workout +${Math.round(todaysWorkoutKcal)} = ${eatTarget}` : ""}
-            </div>
-          </div>
-
-          <div className="border-2 border-ink p-4 bg-paper">
-            <div className="flex items-baseline justify-between gap-2 mb-2">
-              <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted">
-                Burning · Calories Out
-              </span>
-              <span className="font-mono text-[10px] uppercase tracking-[0.25em]" style={{ color: burnRemaining <= 0 ? "#4a6b3e" : "#6b5a3e" }}>
-                {burnRemaining <= 0 ? `+${Math.abs(burnRemaining)} BONUS` : `${burnRemaining} TO GO`}
-              </span>
-            </div>
-            <div className="flex items-baseline gap-2">
-              <span className="font-display text-4xl md:text-5xl font-black leading-none" style={{ color: "#4a6b3e" }}>
-                {burned}
-              </span>
-              <span className="font-mono text-xs uppercase tracking-widest text-ink-muted">
-                / {burnTarget} kcal
-              </span>
-            </div>
-            <ProgressBar value={burned} max={burnTarget} color="#4a6b3e" />
-            <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted mt-2">
-              Goal "{goalKey}" sets target {burnTarget} kcal/day from training
-            </div>
-          </div>
-        </div>
-
-        {/* Net summary */}
-        <div className="mt-4 border-2 border-ink p-3 bg-ink/5 flex items-center justify-between gap-3 flex-wrap">
-          <div className="flex items-center gap-2">
-            <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted">
-              Net energy
-            </span>
-            <span className="font-display text-2xl font-black tabular-nums">
-              {eaten - burned >= 0 ? "+" : ""}
-              {eaten - burned}
-              <span className="font-mono text-xs uppercase tracking-widest text-ink-muted ml-1">
-                kcal
-              </span>
-            </span>
-          </div>
-          <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted">
-            Eaten {eaten} − Burned {burned} = Net {eaten - burned}
-          </div>
-        </div>
+        <EnergyHero
+          eaten={eaten}
+          eatTarget={eatTarget}
+          burned={burned}
+          burnTarget={burnTarget}
+          dayType={dayType}
+          dailyTargetKcal={dailyTargetKcal}
+          todaysWorkoutKcal={todaysWorkoutKcal}
+          goalKey={goalKey}
+          overEat={overEat}
+          burnRemaining={burnRemaining}
+        />
+        <EnergyHeroFooter eaten={eaten} burned={burned} />
       </Card>
+
+      <QuickLog
+        addWaterEntry={addWaterEntry}
+        addCoffeeEntry={addCoffeeEntry}
+        steps={steps}
+        setSteps={setSteps}
+        addMeasurement={addMeasurement}
+        sleep={sleep}
+        setSleepEntry={setSleepEntry}
+        latestWeight={profile.stats?.weightKg}
+        setTab={setTab}
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <div className="border-2 border-ink p-3 md:p-4">
@@ -628,10 +591,17 @@ export function Dashboard({ setTab }) {
 
       <Card>
         <CardHeader kicker="Healthy Habits" title="Daily Tracking" />
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <HabitTile icon={Coffee} label="Coffee" value={coffeeHad} suffix={profile.coffeeSchedule.length ? `/ ${profile.coffeeSchedule.length}` : "cups"} />
           <HabitTile icon={Droplet} label="Water" value={waterCups.toFixed(1)} suffix={`/ ${profile.waterTarget || 8} cups`} accent="#3b6aa3" />
           <HabitTile icon={Footprints} label="Steps" value={steps.toLocaleString()} suffix="" />
+          <HabitTile
+            icon={Clock}
+            label="Sleep"
+            value={sleep?.hours ? sleep.hours.toFixed(1) : "—"}
+            suffix={sleep?.hours ? "hrs" : "log it"}
+            accent={sleep?.hours >= 7 ? "#4a6b3e" : sleep?.hours ? "#c44827" : "#6b5a3e"}
+          />
           <MedsHabitTile
             kicker="Meds"
             meds={meds.filter((m) => (m.category || "med") === "med")}
@@ -751,5 +721,370 @@ function MedsHabitTile({ kicker, meds, doses, onClick }) {
         </div>
       )}
     </button>
+  );
+}
+
+// ============================================================================
+// Energy hero — bigger, clearer eating/burning display with a unified visual.
+// ============================================================================
+
+function EnergyRing({ value, max, color, size = 140, stroke = 14 }) {
+  const r = (size - stroke) / 2;
+  const cx = size / 2;
+  const cy = size / 2;
+  const circumference = 2 * Math.PI * r;
+  const pct = Math.max(0, Math.min(1, value / Math.max(1, max)));
+  const dashOffset = circumference * (1 - pct);
+  return (
+    <svg width={size} height={size} className="shrink-0">
+      <circle
+        cx={cx}
+        cy={cy}
+        r={r}
+        fill="none"
+        stroke="#2a2419"
+        strokeOpacity="0.12"
+        strokeWidth={stroke}
+      />
+      <circle
+        cx={cx}
+        cy={cy}
+        r={r}
+        fill="none"
+        stroke={color}
+        strokeWidth={stroke}
+        strokeLinecap="round"
+        strokeDasharray={circumference}
+        strokeDashoffset={dashOffset}
+        transform={`rotate(-90 ${cx} ${cy})`}
+        style={{ transition: "stroke-dashoffset 400ms ease" }}
+      />
+    </svg>
+  );
+}
+
+function EnergyPanel({
+  kicker,
+  value,
+  target,
+  color,
+  state,
+  stateColor,
+  details,
+  ringValue,
+  ringMax,
+  ringColor,
+}) {
+  return (
+    <div className="border-2 border-ink p-4 bg-paper">
+      <div className="flex items-start gap-4">
+        <div className="relative shrink-0">
+          <EnergyRing value={ringValue} max={ringMax} color={ringColor} size={120} stroke={12} />
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            <span
+              className="font-display text-2xl font-black leading-none tabular-nums"
+              style={{ color }}
+            >
+              {value}
+            </span>
+            <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-ink-muted mt-0.5">
+              of {target}
+            </span>
+          </div>
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted">
+            {kicker}
+          </div>
+          <div
+            className="font-display text-2xl md:text-3xl font-black mt-1 leading-tight"
+            style={{ color: stateColor }}
+          >
+            {state}
+          </div>
+          <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted mt-2 leading-relaxed">
+            {details}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EnergyHero({
+  eaten,
+  eatTarget,
+  burned,
+  burnTarget,
+  dayType,
+  dailyTargetKcal,
+  todaysWorkoutKcal,
+  goalKey,
+  overEat,
+  burnRemaining,
+}) {
+  const eatState =
+    overEat > 0
+      ? `${overEat} OVER`
+      : `${Math.abs(overEat)} LEFT`;
+  const eatStateColor = overEat > 0 ? "#c44827" : "#4a6b3e";
+
+  const burnState =
+    burnRemaining <= 0
+      ? `${Math.abs(burnRemaining)} BONUS`
+      : `${burnRemaining} TO GO`;
+  const burnStateColor = burnRemaining <= 0 ? "#4a6b3e" : "#6b5a3e";
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <EnergyPanel
+        kicker="Eating · Calories In"
+        value={eaten}
+        target={eatTarget}
+        color="#2a2419"
+        state={eatState}
+        stateColor={eatStateColor}
+        details={
+          todaysWorkoutKcal > 0
+            ? `${dayType?.label || "Today"} ${Math.round(dailyTargetKcal - todaysWorkoutKcal)} + workout +${Math.round(todaysWorkoutKcal)} = ${eatTarget} kcal`
+            : `${dayType?.label || "Today"} target ${eatTarget} kcal`
+        }
+        ringValue={eaten}
+        ringMax={eatTarget}
+        ringColor="#c44827"
+      />
+      <EnergyPanel
+        kicker="Burning · Calories Out"
+        value={burned}
+        target={burnTarget}
+        color="#4a6b3e"
+        state={burnState}
+        stateColor={burnStateColor}
+        details={`Goal "${goalKey}" sets target ${burnTarget} kcal/day from training`}
+        ringValue={burned}
+        ringMax={burnTarget}
+        ringColor="#4a6b3e"
+      />
+    </div>
+  );
+}
+
+function EnergyHeroFooter({ eaten, burned }) {
+  const net = eaten - burned;
+  const color = net > 0 ? "#c44827" : net < 0 ? "#4a6b3e" : "#6b5a3e";
+  return (
+    <div className="mt-4 border-2 border-ink p-3 bg-ink/5 grid grid-cols-1 md:grid-cols-3 gap-2">
+      <div className="md:col-span-1">
+        <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted">
+          Net energy
+        </div>
+        <div
+          className="font-display text-3xl font-black tabular-nums leading-tight"
+          style={{ color }}
+        >
+          {net >= 0 ? "+" : ""}
+          {net}
+          <span className="font-mono text-xs uppercase tracking-widest text-ink-muted ml-1">
+            kcal
+          </span>
+        </div>
+      </div>
+      <div className="md:col-span-2 flex items-center font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted leading-relaxed">
+        Eaten {eaten} − Burned {burned} = Net {net} kcal
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// Quick Log — one-tap shortcuts for the most common daily entries.
+// ============================================================================
+
+
+function QuickLog({
+  addWaterEntry,
+  addCoffeeEntry,
+  steps,
+  setSteps,
+  addMeasurement,
+  sleep,
+  setSleepEntry,
+  latestWeight,
+  setTab,
+}) {
+  const [open, setOpen] = useState(null); // null | "weight" | "sleep"
+  const [weight, setWeight] = useState("");
+  const [hours, setHours] = useState(sleep?.hours ?? "");
+  const [bedTime, setBedTime] = useState(sleep?.bedTime ?? "");
+  const [wakeTime, setWakeTime] = useState(sleep?.wakeTime ?? "");
+  const [quality, setQuality] = useState(sleep?.quality ?? "");
+
+  function commitWeight() {
+    if (!weight) return;
+    addMeasurement({ weightKg: weight });
+    setWeight("");
+    setOpen(null);
+  }
+  function commitSleep() {
+    setSleepEntry({ hours, bedTime, wakeTime, quality });
+    setOpen(null);
+  }
+
+  return (
+    <Card>
+      <CardHeader
+        kicker="Quick Log"
+        title="One-tap entries"
+        subtitle="The fastest way to log today's basics."
+      />
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
+        <button
+          onClick={() => addWaterEntry({ qty: 1, unit: "cup" })}
+          className="border-2 border-ink p-3 hover:bg-ink hover:text-paper transition-colors flex flex-col items-center gap-1"
+        >
+          <Droplet size={18} />
+          <span className="font-mono text-[10px] uppercase tracking-[0.2em]">+1 cup</span>
+          <span className="font-body text-xs text-ink-muted">water</span>
+        </button>
+        <button
+          onClick={() => addWaterEntry({ qty: 500, unit: "ml" })}
+          className="border-2 border-ink p-3 hover:bg-ink hover:text-paper transition-colors flex flex-col items-center gap-1"
+        >
+          <Droplet size={18} />
+          <span className="font-mono text-[10px] uppercase tracking-[0.2em]">+500 ml</span>
+          <span className="font-body text-xs text-ink-muted">water</span>
+        </button>
+        <button
+          onClick={() => addCoffeeEntry({ qty: 1, unit: "cup" })}
+          className="border-2 border-ink p-3 hover:bg-ink hover:text-paper transition-colors flex flex-col items-center gap-1"
+        >
+          <Coffee size={18} />
+          <span className="font-mono text-[10px] uppercase tracking-[0.2em]">+1 cup</span>
+          <span className="font-body text-xs text-ink-muted">coffee</span>
+        </button>
+        <button
+          onClick={() => setSteps((steps || 0) + 1000)}
+          className="border-2 border-ink p-3 hover:bg-ink hover:text-paper transition-colors flex flex-col items-center gap-1"
+        >
+          <Footprints size={18} />
+          <span className="font-mono text-[10px] uppercase tracking-[0.2em]">+1k</span>
+          <span className="font-body text-xs text-ink-muted">steps</span>
+        </button>
+        <button
+          onClick={() => setOpen(open === "weight" ? null : "weight")}
+          className={`border-2 border-ink p-3 transition-colors flex flex-col items-center gap-1 ${
+            open === "weight" ? "bg-ink text-paper" : "hover:bg-ink hover:text-paper"
+          }`}
+        >
+          <span className="text-base">⚖️</span>
+          <span className="font-mono text-[10px] uppercase tracking-[0.2em]">Weight</span>
+          <span className={`font-body text-xs ${open === "weight" ? "text-paper/70" : "text-ink-muted"}`}>
+            log
+          </span>
+        </button>
+        <button
+          onClick={() => setOpen(open === "sleep" ? null : "sleep")}
+          className={`border-2 border-ink p-3 transition-colors flex flex-col items-center gap-1 ${
+            open === "sleep" ? "bg-ink text-paper" : "hover:bg-ink hover:text-paper"
+          }`}
+        >
+          <Clock size={18} />
+          <span className="font-mono text-[10px] uppercase tracking-[0.2em]">Sleep</span>
+          <span className={`font-body text-xs ${open === "sleep" ? "text-paper/70" : "text-ink-muted"}`}>
+            {sleep?.hours ? `${sleep.hours.toFixed(1)} h` : "log"}
+          </span>
+        </button>
+      </div>
+
+      {open === "weight" && (
+        <div className="border-2 border-ink p-3 mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2 items-end">
+          <div className="sm:col-span-2">
+            <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted mb-1">
+              Weight (kg)
+            </div>
+            <input
+              type="number"
+              step="0.1"
+              value={weight}
+              onChange={(e) => setWeight(e.target.value)}
+              placeholder={latestWeight ? String(latestWeight) : ""}
+              className="w-full border-2 border-ink bg-paper px-2 py-1.5 font-display text-2xl font-black"
+            />
+          </div>
+          <div className="flex gap-2">
+            <Button variant="primary" onClick={commitWeight} disabled={!weight}>
+              Log
+            </Button>
+            <Button variant="outline" onClick={() => setTab && setTab("progress")}>
+              Open Progress
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {open === "sleep" && (
+        <div className="border-2 border-ink p-3 mt-3 space-y-2">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <div>
+              <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted mb-1">
+                Hours
+              </div>
+              <input
+                type="number"
+                step="0.1"
+                value={hours}
+                onChange={(e) => setHours(e.target.value)}
+                placeholder="7.5"
+                className="w-full border-2 border-ink bg-paper px-2 py-1.5 font-display text-xl font-black"
+              />
+            </div>
+            <div>
+              <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted mb-1">
+                Bedtime
+              </div>
+              <input
+                type="time"
+                value={bedTime}
+                onChange={(e) => setBedTime(e.target.value)}
+                className="w-full border-2 border-ink bg-paper px-2 py-1.5 font-body text-base"
+              />
+            </div>
+            <div>
+              <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted mb-1">
+                Wake
+              </div>
+              <input
+                type="time"
+                value={wakeTime}
+                onChange={(e) => setWakeTime(e.target.value)}
+                className="w-full border-2 border-ink bg-paper px-2 py-1.5 font-body text-base"
+              />
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted">
+              Quality
+            </span>
+            {[1, 2, 3, 4, 5].map((q) => (
+              <button
+                key={q}
+                onClick={() => setQuality(String(q))}
+                className={`w-8 h-8 border-2 border-ink font-display text-base font-black ${
+                  Number(quality) === q ? "bg-ink text-paper" : "hover:bg-ink/10"
+                }`}
+              >
+                {q}
+              </button>
+            ))}
+            <Button variant="primary" onClick={commitSleep} className="ml-auto">
+              Log
+            </Button>
+          </div>
+          <p className="font-body text-sm italic text-ink-muted">
+            Tip: Hours auto-calculate from Bedtime + Wake if both filled.
+          </p>
+        </div>
+      )}
+    </Card>
   );
 }

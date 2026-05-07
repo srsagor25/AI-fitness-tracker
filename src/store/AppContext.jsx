@@ -65,6 +65,8 @@ export function AppProvider({ children }) {
   });
   const [dayTypeId, setDayTypeId] = useState(() => load(`dayType:${dateKey}`, profile.dayTypes[0]?.id || "rest"));
   const [medsTakenToday, setMedsTakenToday] = useState(() => load(`meds:taken:${dateKey}`, []));
+  // Sleep: { hours, bedTime?, wakeTime?, quality? } stored per day.
+  const [sleep, setSleep] = useState(() => load(`sleep:${dateKey}`, null));
 
   // ----- Cross-day logs -----
   const [weightLog, setWeightLog] = useState(() => load("weight:log", []));
@@ -144,6 +146,10 @@ export function AppProvider({ children }) {
   useEffect(() => save(`water:${dateKey}`, waterLog), [waterLog, dateKey]);
   useEffect(() => save(`dayType:${dateKey}`, dayTypeId), [dayTypeId, dateKey]);
   useEffect(() => save(`meds:taken:${dateKey}`, medsTakenToday), [medsTakenToday, dateKey]);
+  useEffect(() => {
+    if (sleep) save(`sleep:${dateKey}`, sleep);
+    else save(`sleep:${dateKey}`, null);
+  }, [sleep, dateKey]);
   useEffect(() => save("weight:log", weightLog), [weightLog]);
   useEffect(() => save("body:photos", bodyPhotos), [bodyPhotos]);
   useEffect(() => save("meds:list", meds), [meds]);
@@ -392,6 +398,31 @@ export function AppProvider({ children }) {
     setWaterLog([]);
     setMedsTakenToday([]);
     showSnack("Day cleared");
+  }
+
+  // ----- Sleep -----
+  // Compute hours from bedTime (yesterday) → wakeTime (today) when both
+  // provided; else accept hours directly.
+  function setSleepEntry({ hours, bedTime, wakeTime, quality, note } = {}) {
+    let h = hours != null ? Number(hours) : null;
+    if ((h == null || isNaN(h)) && bedTime && wakeTime) {
+      const [bh, bm] = bedTime.split(":").map(Number);
+      const [wh, wm] = wakeTime.split(":").map(Number);
+      let mins = (wh * 60 + wm) - (bh * 60 + bm);
+      if (mins <= 0) mins += 24 * 60; // overnight
+      h = +(mins / 60).toFixed(2);
+    }
+    setSleep({
+      hours: h,
+      bedTime: bedTime || null,
+      wakeTime: wakeTime || null,
+      quality: quality != null && quality !== "" ? Number(quality) : null,
+      note: (note || "").trim() || null,
+    });
+    showSnack(h != null ? `Sleep logged: ${h.toFixed(1)} h` : "Sleep logged");
+  }
+  function clearSleep() {
+    setSleep(null);
   }
 
   // ----- Water entries -----
@@ -790,6 +821,7 @@ export function AppProvider({ children }) {
     coffeeLog, addCoffeeEntry, removeCoffeeEntry, toggleCoffeeSchedule,
     steps, setSteps, stepAdjustKcal,
     waterLog, addWaterEntry, removeWaterEntry,
+    sleep, setSleepEntry, clearSleep,
     dayTypeId, setDayTypeId, dayType,
     clearDay,
     // totals + helpers

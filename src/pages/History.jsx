@@ -31,6 +31,47 @@ const VIEWS = [
   { id: "you", label: "You", icon: User },
 ];
 
+// Global filter shape: { mode: "preset" | "custom", days?, from?, to? }
+// Sub-views translate this into a from/to ms pair via filterRange().
+const PRESETS = [
+  { id: 7, label: "7 days" },
+  { id: 14, label: "14 days" },
+  { id: 30, label: "30 days" },
+  { id: 90, label: "3 months" },
+  { id: 180, label: "6 months" },
+  { id: 365, label: "1 year" },
+  { id: 0, label: "All time" },
+];
+
+function filterRange(filter) {
+  if (filter.mode === "custom") {
+    const fromMs = filter.from ? new Date(filter.from).getTime() : 0;
+    const toMs = filter.to ? new Date(filter.to + "T23:59:59").getTime() : Date.now();
+    return { from: fromMs, to: toMs };
+  }
+  const days = Number(filter.days) || 0;
+  const to = Date.now();
+  const from = days ? to - days * 86400000 : 0;
+  return { from, to };
+}
+
+function filterLabel(filter) {
+  if (filter.mode === "custom") {
+    const f = filter.from ? new Date(filter.from).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—";
+    const t = filter.to ? new Date(filter.to).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—";
+    return `${f} → ${t}`;
+  }
+  const d = Number(filter.days) || 0;
+  if (d === 0) return "All time";
+  if (d === 7) return "Last 7 days";
+  if (d === 14) return "Last 14 days";
+  if (d === 30) return "Last 30 days";
+  if (d === 90) return "Last 3 months";
+  if (d === 180) return "Last 6 months";
+  if (d === 365) return "Last year";
+  return `Last ${d} days`;
+}
+
 export function History() {
   const {
     history,
@@ -44,6 +85,7 @@ export function History() {
     meds,
   } = useApp();
   const [view, setView] = useState("training");
+  const [filter, setFilter] = useState({ mode: "preset", days: 30 });
 
   return (
     <>
@@ -51,9 +93,10 @@ export function History() {
         <CardHeader
           kicker="Global Log"
           title="History"
-          subtitle="Per-section history and summary."
+          subtitle={`Per-section history & summary · ${filterLabel(filter)}`}
         />
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+        {/* Tab pills */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
           {VIEWS.map((v) => {
             const Icon = v.icon;
             return (
@@ -69,31 +112,106 @@ export function History() {
             );
           })}
         </div>
+
+        {/* Global filter row */}
+        <div className="border-2 border-ink p-3 bg-ink/5">
+          <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted mb-2">
+            Filter (applies to all sub-views)
+          </div>
+          <div className="flex flex-wrap gap-2 mb-2">
+            {PRESETS.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => setFilter({ mode: "preset", days: p.id })}
+                className={`px-2.5 py-1 border-2 font-mono text-[10px] uppercase tracking-[0.2em] ${
+                  filter.mode === "preset" && filter.days === p.id
+                    ? "bg-ink text-paper border-ink"
+                    : "border-ink hover:bg-ink hover:text-paper"
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+            <button
+              onClick={() =>
+                setFilter({
+                  mode: "custom",
+                  from: filter.from || new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10),
+                  to: filter.to || new Date().toISOString().slice(0, 10),
+                })
+              }
+              className={`px-2.5 py-1 border-2 font-mono text-[10px] uppercase tracking-[0.2em] ${
+                filter.mode === "custom"
+                  ? "bg-ink text-paper border-ink"
+                  : "border-ink hover:bg-ink hover:text-paper"
+              }`}
+            >
+              Custom range
+            </button>
+          </div>
+          {filter.mode === "custom" && (
+            <div className="flex flex-wrap gap-2 items-end">
+              <div>
+                <div className="font-mono text-[9px] uppercase tracking-[0.25em] text-ink-muted mb-0.5">
+                  From
+                </div>
+                <input
+                  type="date"
+                  value={filter.from || ""}
+                  onChange={(e) => setFilter({ ...filter, from: e.target.value })}
+                  className="border-2 border-ink bg-paper px-2 py-1 font-body text-sm"
+                />
+              </div>
+              <div>
+                <div className="font-mono text-[9px] uppercase tracking-[0.25em] text-ink-muted mb-0.5">
+                  To
+                </div>
+                <input
+                  type="date"
+                  value={filter.to || ""}
+                  onChange={(e) => setFilter({ ...filter, to: e.target.value })}
+                  className="border-2 border-ink bg-paper px-2 py-1 font-body text-sm"
+                />
+              </div>
+            </div>
+          )}
+        </div>
       </Card>
 
       {view === "training" && (
-        <WorkoutHistory history={history} clearHistory={clearHistory} profile={profile} />
+        <WorkoutHistory
+          history={history}
+          clearHistory={clearHistory}
+          profile={profile}
+          filter={filter}
+        />
       )}
-      {view === "diet" && <MealHistory profile={profile} customFoods={customFoods} />}
+      {view === "diet" && <MealHistory profile={profile} customFoods={customFoods} filter={filter} />}
       {view === "pantry" && (
         <PantryHistory
           grocery={grocery}
           activity={groceryActivity}
           onClearActivity={clearGroceryActivity}
+          filter={filter}
         />
       )}
       {view === "you" && (
-        <YouHistory profile={profile} weightLog={weightLog} meds={meds} />
+        <YouHistory profile={profile} weightLog={weightLog} meds={meds} filter={filter} />
       )}
     </>
   );
 }
 
-function WorkoutHistory({ history, clearHistory, profile }) {
-  const totalSessions = history.length;
-  const totalDuration = history.reduce((s, h) => s + (h.durationSec || 0), 0);
-  const totalVolume = history.reduce((s, h) => s + (h.totalVolume || 0), 0);
-  const totalKcal = history.reduce(
+function WorkoutHistory({ history, clearHistory, profile, filter }) {
+  const range = filterRange(filter);
+  const filtered = useMemo(
+    () => history.filter((h) => h.date >= range.from && h.date <= range.to),
+    [history, range.from, range.to],
+  );
+  const totalSessions = filtered.length;
+  const totalDuration = filtered.reduce((s, h) => s + (h.durationSec || 0), 0);
+  const totalVolume = filtered.reduce((s, h) => s + (h.totalVolume || 0), 0);
+  const totalKcal = filtered.reduce(
     (s, h) =>
       s +
       estimateWorkoutKcal({
@@ -140,7 +258,7 @@ function WorkoutHistory({ history, clearHistory, profile }) {
       )}
 
       <ul className="space-y-3">
-        {history.map((h) => {
+        {filtered.map((h) => {
           const kcal = estimateWorkoutKcal({
             durationSec: h.durationSec,
             weightKg: profile.stats?.weightKg || profile.weightKg || 70,
@@ -223,49 +341,58 @@ function WorkoutHistory({ history, clearHistory, profile }) {
   );
 }
 
-function MealHistory({ profile, customFoods }) {
-  const [windowDays, setWindowDays] = useState(14);
+function MealHistory({ profile, customFoods, filter }) {
+  const range = filterRange(filter);
 
   const days = useMemo(() => {
     const out = [];
-    for (let i = 0; i < windowDays; i++) {
-      const d = new Date();
-      d.setHours(0, 0, 0, 0);
-      d.setDate(d.getDate() - i);
-      const k = todayKey(d);
+    // Iterate calendar days from `to` back to `from`. Cap at 365 so all-time
+    // doesn't try to scan the entire history of localStorage.
+    const start = new Date(range.to);
+    start.setHours(0, 0, 0, 0);
+    const fromDay = new Date(range.from);
+    fromDay.setHours(0, 0, 0, 0);
+    const maxDays = 365;
+    let day = 0;
+    const cursor = new Date(start);
+    while (cursor >= fromDay && day < maxDays) {
+      const k = todayKey(cursor);
       const meals = load(`meals:${k}`, null);
       const cheats = load(`cheats:${k}`, null);
-      if (!meals && !cheats) continue;
-      const slotItems = {};
-      let kcal = 0;
-      let protein = 0;
-      let mealCount = 0;
-      for (const slot of MEAL_SLOTS) {
-        slotItems[slot] = (meals?.[slot] || []).map((m) => {
-          const t = calcMeal(m.items, customFoods);
+      if (meals || cheats) {
+        const slotItems = {};
+        let kcal = 0;
+        let protein = 0;
+        let mealCount = 0;
+        for (const slot of MEAL_SLOTS) {
+          slotItems[slot] = (meals?.[slot] || []).map((m) => {
+            const t = calcMeal(m.items, customFoods);
+            kcal += t.kcal;
+            protein += t.protein;
+            mealCount++;
+            return { ...m, totals: t };
+          });
+        }
+        const cheatItems = (cheats || []).map((c) => {
+          const t = calcMeal(c.items, customFoods);
           kcal += t.kcal;
           protein += t.protein;
           mealCount++;
-          return { ...m, totals: t };
+          return { ...c, totals: t };
+        });
+        out.push({
+          date: new Date(cursor),
+          key: k,
+          slots: slotItems,
+          cheats: cheatItems,
+          totals: { kcal, protein, mealCount },
         });
       }
-      const cheatItems = (cheats || []).map((c) => {
-        const t = calcMeal(c.items, customFoods);
-        kcal += t.kcal;
-        protein += t.protein;
-        mealCount++;
-        return { ...c, totals: t };
-      });
-      out.push({
-        date: d,
-        key: k,
-        slots: slotItems,
-        cheats: cheatItems,
-        totals: { kcal, protein, mealCount },
-      });
+      cursor.setDate(cursor.getDate() - 1);
+      day++;
     }
     return out;
-  }, [windowDays, customFoods]);
+  }, [range.from, range.to, customFoods]);
 
   const grandKcal = days.reduce((s, d) => s + d.totals.kcal, 0);
   const grandMeals = days.reduce((s, d) => s + d.totals.mealCount, 0);
@@ -274,28 +401,13 @@ function MealHistory({ profile, customFoods }) {
     <Card>
       <CardHeader
         kicker="Meal Log"
-        title={`${days.length} day${days.length === 1 ? "" : "s"}`}
-        subtitle={`${grandMeals} meals · ${Math.round(grandKcal).toLocaleString()} kcal in the last ${windowDays} days`}
-        right={
-          <div className="flex gap-2">
-            {[7, 14, 30, 60].map((d) => (
-              <button
-                key={d}
-                onClick={() => setWindowDays(d)}
-                className={`px-3 py-1.5 border-2 font-mono text-[10px] uppercase tracking-[0.2em] ${
-                  windowDays === d ? "bg-ink text-paper border-ink" : "border-ink hover:bg-ink hover:text-paper"
-                }`}
-              >
-                {d}d
-              </button>
-            ))}
-          </div>
-        }
+        title={`${days.length} day${days.length === 1 ? "" : "s"} with food logged`}
+        subtitle={`${grandMeals} meals · ${Math.round(grandKcal).toLocaleString()} kcal in window`}
       />
 
       {days.length === 0 ? (
         <p className="font-body italic text-ink-muted">
-          No meals logged in the last {windowDays} days.
+          No meals logged in this window.
         </p>
       ) : (
         <ul className="space-y-3">
@@ -376,13 +488,11 @@ function MealHistory({ profile, customFoods }) {
   );
 }
 
-function PantryHistory({ grocery, activity, onClearActivity }) {
-  const [windowDays, setWindowDays] = useState(14);
-
-  const cutoff = Date.now() - windowDays * 86400000;
+function PantryHistory({ grocery, activity, onClearActivity, filter }) {
+  const range = filterRange(filter);
   const recent = useMemo(
-    () => activity.filter((e) => e.ts >= cutoff),
-    [activity, cutoff],
+    () => activity.filter((e) => e.ts >= range.from && e.ts <= range.to),
+    [activity, range.from, range.to],
   );
 
   // Per-item summary: total consumed and total restocked in window
@@ -409,23 +519,8 @@ function PantryHistory({ grocery, activity, onClearActivity }) {
       <Card>
         <CardHeader
           kicker="Pantry Summary"
-          title={`Last ${windowDays} days`}
-          subtitle={`${recent.length} activity event${recent.length === 1 ? "" : "s"}`}
-          right={
-            <div className="flex gap-2">
-              {[7, 14, 30, 60].map((d) => (
-                <button
-                  key={d}
-                  onClick={() => setWindowDays(d)}
-                  className={`px-3 py-1.5 border-2 font-mono text-[10px] uppercase tracking-[0.2em] ${
-                    windowDays === d ? "bg-ink text-paper border-ink" : "border-ink hover:bg-ink hover:text-paper"
-                  }`}
-                >
-                  {d}d
-                </button>
-              ))}
-            </div>
-          }
+          title={filterLabel(filter)}
+          subtitle={`${recent.length} activity event${recent.length === 1 ? "" : "s"} in window`}
         />
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <Stat label="Items" value={grocery.length} />
@@ -481,7 +576,7 @@ function PantryHistory({ grocery, activity, onClearActivity }) {
         <CardHeader
           kicker="Activity Log"
           title="Recent Changes"
-          subtitle={`${recent.length} events in the last ${windowDays} days`}
+          subtitle={`${recent.length} events in window (${filterLabel(filter)})`}
           right={
             activity.length > 0 && (
               <Button
@@ -556,9 +651,8 @@ function PantryHistory({ grocery, activity, onClearActivity }) {
   );
 }
 
-function YouHistory({ profile, weightLog, meds }) {
-  const [windowDays, setWindowDays] = useState(30);
-  const cutoff = Date.now() - windowDays * 86400000;
+function YouHistory({ profile, weightLog, meds, filter }) {
+  const range = filterRange(filter);
 
   const dosesInWindow = useMemo(() => {
     const keys = listKeys("meds:taken:");
@@ -567,23 +661,25 @@ function YouHistory({ profile, weightLog, meds }) {
       const day = k.replace("meds:taken:", "");
       const entries = load(k, []);
       for (const e of entries) {
-        if (e.takenAt >= cutoff) out.push({ ...e, day });
+        if (e.takenAt >= range.from && e.takenAt <= range.to) out.push({ ...e, day });
       }
     }
     return out.sort((a, b) => b.takenAt - a.takenAt);
-  }, [windowDays, meds]);
+  }, [range.from, range.to, meds]);
 
   const sortedWeights = useMemo(
     () => [...weightLog].sort((a, b) => b.date - a.date),
     [weightLog],
   );
-  const weightsInWindow = sortedWeights.filter((e) => e.date >= cutoff);
+  const weightsInWindow = sortedWeights.filter(
+    (e) => e.date >= range.from && e.date <= range.to,
+  );
 
   const sessionsInWindow = useMemo(() => {
     const k = "workout:history";
     const all = load(k, []);
-    return all.filter((s) => s.date >= cutoff).length;
-  }, [windowDays]);
+    return all.filter((s) => s.date >= range.from && s.date <= range.to).length;
+  }, [range.from, range.to]);
 
   // Doses by med
   const dosesByMed = useMemo(() => {
@@ -608,28 +704,13 @@ function YouHistory({ profile, weightLog, meds }) {
       <Card>
         <CardHeader
           kicker="You Summary"
-          title={`Last ${windowDays} days`}
-          subtitle={`${sortedWeights.length} weigh-ins · ${dosesInWindow.length} dose${dosesInWindow.length === 1 ? "" : "s"}`}
-          right={
-            <div className="flex gap-2">
-              {[7, 30, 90, 180].map((d) => (
-                <button
-                  key={d}
-                  onClick={() => setWindowDays(d)}
-                  className={`px-3 py-1.5 border-2 font-mono text-[10px] uppercase tracking-[0.2em] ${
-                    windowDays === d ? "bg-ink text-paper border-ink" : "border-ink hover:bg-ink hover:text-paper"
-                  }`}
-                >
-                  {d}d
-                </button>
-              ))}
-            </div>
-          }
+          title={filterLabel(filter)}
+          subtitle={`${sortedWeights.length} weigh-ins · ${dosesInWindow.length} dose${dosesInWindow.length === 1 ? "" : "s"} in window`}
         />
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <Stat label="Weight" value={latestWeight?.weightKg || "—"} suffix="kg" />
           <Stat
-            label={`Δ in ${windowDays}d`}
+            label="Δ in window"
             value={
               weightsInWindow.length >= 2
                 ? `${weightChange >= 0 ? "+" : ""}${weightChange.toFixed(1)}`

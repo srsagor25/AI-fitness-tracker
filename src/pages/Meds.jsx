@@ -18,6 +18,25 @@ import {
   Clock,
 } from "lucide-react";
 
+// Common supplement presets — pre-fill the editor when adding from "Supps".
+export const SUPPLEMENT_PRESETS = [
+  { name: "Melatonin gummies", type: "gummy", defaultQuantity: 1, unit: "gummies", notes: "Take 30 min before bed" },
+  { name: "Vitamin D3", type: "capsule", defaultQuantity: 1, unit: "capsules", notes: "1000–4000 IU; with fat for absorption" },
+  { name: "Multivitamin", type: "tablet", defaultQuantity: 1, unit: "tablets", notes: "With breakfast" },
+  { name: "Nicotine gum", type: "gummy", defaultQuantity: 1, unit: "pieces", notes: "" },
+  { name: "Nicotine patch", type: "topical", defaultQuantity: 1, unit: "patch", notes: "Apply daily; rotate site" },
+  { name: "Fish Oil / Omega-3", type: "capsule", defaultQuantity: 2, unit: "capsules", notes: "With meal" },
+  { name: "Magnesium glycinate", type: "capsule", defaultQuantity: 1, unit: "capsules", notes: "Before bed" },
+  { name: "Zinc", type: "capsule", defaultQuantity: 1, unit: "capsules", notes: "Not on empty stomach" },
+  { name: "Vitamin C", type: "tablet", defaultQuantity: 1, unit: "tablets", notes: "" },
+  { name: "B-Complex", type: "tablet", defaultQuantity: 1, unit: "tablets", notes: "" },
+  { name: "Creatine", type: "powder", defaultQuantity: 5, unit: "g", notes: "5g daily, any time" },
+  { name: "Whey protein", type: "powder", defaultQuantity: 1, unit: "scoops", notes: "Post-workout or with meals" },
+  { name: "Caffeine", type: "tablet", defaultQuantity: 1, unit: "tablets", notes: "" },
+  { name: "Ashwagandha", type: "capsule", defaultQuantity: 1, unit: "capsules", notes: "" },
+  { name: "Probiotic", type: "capsule", defaultQuantity: 1, unit: "capsules", notes: "" },
+];
+
 export const MED_TYPES = [
   { id: "tablet", label: "Tablet", icon: "💊", iconCmp: Pill, defaultUnit: "tablets" },
   { id: "capsule", label: "Capsule", icon: "💊", iconCmp: Pill, defaultUnit: "capsules" },
@@ -29,7 +48,7 @@ export const MED_TYPES = [
   { id: "inhaler", label: "Inhaler", icon: "🫁", iconCmp: Droplet, defaultUnit: "puffs" },
   { id: "vaccine", label: "Vaccine / Injection", icon: "💉", iconCmp: Syringe, defaultUnit: "dose" },
   { id: "topical", label: "Topical / Cream", icon: "🩹", iconCmp: Pill, defaultUnit: "applications" },
-  { id: "therapy", label: "Therapy session", icon: "🧘", iconCmp: Pill, defaultUnit: "sessions" },
+  { id: "therapy", label: "Therapy / Workout", icon: "🧘", iconCmp: Pill, defaultUnit: "minutes", defaultQuantity: 30 },
   { id: "other", label: "Other", icon: "🩺", iconCmp: Pill, defaultUnit: "units" },
 ];
 
@@ -434,7 +453,15 @@ function MedEditorModal({ med, onClose, onSave }) {
   }
   function changeType(typeId) {
     const t = MED_TYPES.find((x) => x.id === typeId) || MED_TYPES[0];
-    setDraft((d) => ({ ...d, type: typeId, unit: d.unit || t.defaultUnit }));
+    setDraft((d) => ({
+      ...d,
+      type: typeId,
+      // Reset unit + default quantity to the type's defaults if this is a
+      // fresh draft. We only respect the user's prior unit if it's not the
+      // previous type's default (i.e. they explicitly customised it).
+      unit: t.defaultUnit,
+      defaultQuantity: t.defaultQuantity ?? d.defaultQuantity ?? 1,
+    }));
   }
   function addReminder() {
     if (!reminderInput) return;
@@ -483,11 +510,42 @@ function MedEditorModal({ med, onClose, onSave }) {
       }
     >
       <div className="space-y-3">
+        {draft.category === "supplement" && !draft.name?.trim() && (
+          <div className="border-2 border-ink p-3 bg-ink/5">
+            <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted mb-2">
+              Quick-pick a supplement
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {SUPPLEMENT_PRESETS.map((p) => (
+                <button
+                  key={p.name}
+                  type="button"
+                  onClick={() =>
+                    setDraft((d) => ({
+                      ...d,
+                      name: p.name,
+                      type: p.type,
+                      defaultQuantity: p.defaultQuantity,
+                      unit: p.unit,
+                      notes: p.notes || d.notes || "",
+                    }))
+                  }
+                  className="font-mono text-[10px] uppercase tracking-[0.2em] border-2 border-ink px-2 py-1 hover:bg-ink hover:text-paper transition-colors"
+                >
+                  {p.name}
+                </button>
+              ))}
+            </div>
+            <p className="font-body text-sm italic text-ink-muted mt-2">
+              Tap one to fill in the form, then add reminder times below.
+            </p>
+          </div>
+        )}
         <Field label="Name">
           <TextInput
             value={draft.name}
             onChange={(e) => update({ name: e.target.value })}
-            placeholder="e.g. Vitamin D3, Metformin, Ozempic"
+            placeholder={draft.category === "supplement" ? "e.g. Magnesium glycinate" : "e.g. Vitamin D3, Metformin, Ozempic"}
           />
         </Field>
         <Field label="Type">
