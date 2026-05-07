@@ -65,6 +65,32 @@ export function AppProvider({ children }) {
     }, 2200);
   }, []);
 
+  // One-time migration: merge perishable info from latest templates into
+  // any pre-existing grocery items in localStorage.
+  useEffect(() => {
+    const perishableByKey = {};
+    for (const t of Object.values(TEMPLATES)) {
+      for (const it of t.groceryTemplate) {
+        if (it.perishable) {
+          perishableByKey[it.key] = { perishable: true, maxDays: it.maxDays || 7 };
+        }
+      }
+    }
+    setGrocery((prev) => {
+      let changed = false;
+      const next = prev.map((it) => {
+        const p = perishableByKey[it.key];
+        if (p && !it.perishable) {
+          changed = true;
+          return { ...it, ...p };
+        }
+        return it;
+      });
+      return changed ? next : prev;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Persist
   useEffect(() => save("profile:current", profile), [profile]);
   useEffect(() => save("apiKey:anthropic", apiKey), [apiKey]);

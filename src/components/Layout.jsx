@@ -1,18 +1,34 @@
 import { useApp } from "../store/AppContext.jsx";
 import { formatLongDate } from "../lib/time.js";
 
-const TABS = [
-  { id: "dashboard", label: "Today" },
-  { id: "diet", label: "Diet" },
-  { id: "cheat", label: "Cheat" },
-  { id: "build", label: "Build" },
-  { id: "plan", label: "Plan" },
-  { id: "week", label: "Week" },
-  { id: "workout", label: "Workout" },
-  { id: "programs", label: "Programs" },
-  { id: "history", label: "History" },
-  { id: "grocery", label: "Grocery" },
-  { id: "profile", label: "Profile" },
+const TAB_GROUPS = [
+  {
+    label: "Diet · Nutrition",
+    tabs: [
+      { id: "dashboard", label: "Today" },
+      { id: "diet", label: "Diet" },
+      { id: "cheat", label: "Cheat" },
+      { id: "build", label: "Build" },
+      { id: "plan", label: "Plan" },
+      { id: "week", label: "Week" },
+    ],
+  },
+  {
+    label: "Training",
+    tabs: [
+      { id: "workout", label: "Workout" },
+      { id: "programs", label: "Programs" },
+      { id: "history", label: "History" },
+    ],
+  },
+  {
+    label: "Pantry",
+    tabs: [{ id: "grocery", label: "Grocery" }],
+  },
+  {
+    label: "You",
+    tabs: [{ id: "profile", label: "Profile" }],
+  },
 ];
 
 export function Layout({ tab, setTab, children }) {
@@ -34,20 +50,35 @@ export function Layout({ tab, setTab, children }) {
         </header>
 
         <nav className="border-y-2 border-ink mb-6 overflow-x-auto">
-          <ul className="flex min-w-max md:min-w-0">
-            {TABS.map((t) => (
-              <li key={t.id} className="flex-1">
-                <button
-                  onClick={() => setTab(t.id)}
-                  className={`w-full py-3 px-3 font-mono text-[10px] uppercase tracking-[0.18em] transition-colors ${
-                    tab === t.id ? "bg-ink text-paper" : "text-ink hover:bg-ink/10"
-                  }`}
+          <div className="flex min-w-max md:min-w-0">
+            {TAB_GROUPS.map((g, gi) => {
+              const isLast = gi === TAB_GROUPS.length - 1;
+              return (
+                <div
+                  key={g.label}
+                  className={`flex flex-col ${isLast ? "" : "border-r-4 border-ink"}`}
+                  style={{ flex: `${g.tabs.length} 1 0%` }}
                 >
-                  {t.label}
-                </button>
-              </li>
-            ))}
-          </ul>
+                  <div className="text-center font-mono text-[9px] uppercase tracking-[0.3em] text-ink-muted py-1.5 border-b border-ink/30 bg-ink/5">
+                    {g.label}
+                  </div>
+                  <div className="flex">
+                    {g.tabs.map((t) => (
+                      <button
+                        key={t.id}
+                        onClick={() => setTab(t.id)}
+                        className={`flex-1 py-3 px-3 font-mono text-[10px] uppercase tracking-[0.18em] transition-colors whitespace-nowrap ${
+                          tab === t.id ? "bg-ink text-paper" : "text-ink hover:bg-ink/10"
+                        }`}
+                      >
+                        {t.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </nav>
 
         <main className="space-y-6 pb-24">{children}</main>

@@ -47,13 +47,30 @@ export function Plan() {
     return presetsBySlot[slot]?.[key];
   }
 
-  // Compute total ingredients needed by the plan
+  // Perishable keys with their max-day cap.
+  const perishableMaxDays = useMemo(() => {
+    const out = {};
+    for (const it of grocery) {
+      if (it.perishable) out[it.key] = it.maxDays || 7;
+    }
+    return out;
+  }, [grocery]);
+
+  // Compute total ingredients needed by the plan.
+  // For perishable items (fruits, vegetables) we only count the next N days
+  // (default 7) so the shopping list never suggests stocking more than will
+  // realistically last.
   const planTotals = useMemo(() => {
     const totals = {};
     let totalKcal = 0;
     let totalProtein = 0;
     let mealCount = 0;
+    let perishableCapped = false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
     for (const date of Object.keys(plan)) {
+      const dateObj = fromKey(date);
+      const daysOut = Math.floor((dateObj.getTime() - today.getTime()) / 86400000);
       for (const slot of SLOTS) {
         const key = plan[date]?.[slot.id];
         if (!key) continue;
@@ -65,12 +82,17 @@ export function Plan() {
         totalProtein += t.protein;
         const deltas = ingredientDeltas(preset.items);
         for (const k in deltas) {
+          const cap = perishableMaxDays[k];
+          if (cap != null && daysOut > cap) {
+            perishableCapped = true;
+            continue;
+          }
           totals[k] = (totals[k] || 0) + deltas[k];
         }
       }
     }
-    return { ingredients: totals, totalKcal, totalProtein, mealCount };
-  }, [plan, presetsBySlot]);
+    return { ingredients: totals, totalKcal, totalProtein, mealCount, perishableCapped };
+  }, [plan, presetsBySlot, perishableMaxDays]);
 
   // Convert ingredient totals → shopping suggestions: have qty in inventory, need delta
   const shoppingList = useMemo(() => {
@@ -89,6 +111,7 @@ export function Plan() {
         unit: inv?.unit || "",
         category: inv?.category || "Other",
         icon: inv?.icon || "🛒",
+        perishable: !!inv?.perishable,
         need,
         have,
         buy,
@@ -245,7 +268,11 @@ export function Plan() {
         <CardHeader
           kicker="Shopping"
           title="Generated Shopping List"
-          subtitle={`Compares planned meals (${planTotals.mealCount}) to current pantry.`}
+          subtitle={`Compares planned meals (${planTotals.mealCount}) to current pantry.${
+            planTotals.perishableCapped
+              ? " Perishables (fruits, vegetables) capped to next 7 days — re-shop weekly."
+              : ""
+          }`}
           right={
             shoppingList.some((it) => it.buy > 0) && (
               <Button variant="primary" size="sm" onClick={addAllToManualShopping}>
@@ -267,6 +294,7 @@ export function Plan() {
                   <div className="font-body text-base flex items-center gap-2 flex-wrap">
                     {it.name}
                     <Chip>{it.category}</Chip>
+                    {it.perishable && <Chip color="#c44827">Perishable · 7d</Chip>}
                     {it.buy > 0 ? (
                       <Chip color="#c44827">Buy {it.packetsToBuy} packets</Chip>
                     ) : (

@@ -142,10 +142,14 @@ export function Grocery() {
                           <div className="font-body text-base flex items-center gap-2 flex-wrap">
                             {it.name}
                             {isLow && <Chip color="#c44827">Low</Chip>}
+                            {it.perishable && (
+                              <Chip color="#c44827">Perishable · {it.maxDays || 7}d max</Chip>
+                            )}
                             {it.optional && <Chip color="#6b5a3e">Optional</Chip>}
                           </div>
                           <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted">
                             Threshold {it.lowThreshold}{it.unit} · Packet {it.packetSize}{it.unit}
+                            {it.perishable && ` · keep ≤ ${it.maxDays || 7} days of stock`}
                           </div>
                         </div>
                         <div className="flex items-center gap-1">
@@ -209,15 +213,26 @@ export function Grocery() {
             ) : (
               <ul className="divide-y divide-ink/30 border-y border-ink/30">
                 {lowStock.map((it) => {
-                  const need = Math.max(0, it.lowThreshold * 2 - it.qty);
+                  // Perishables top up to lowThreshold (one fresh packet's
+                  // worth) so we never carry more than ~maxDays of stock.
+                  // Non-perishables top up to 2× threshold for headroom.
+                  const need = it.perishable
+                    ? Math.max(0, it.lowThreshold - it.qty)
+                    : Math.max(0, it.lowThreshold * 2 - it.qty);
                   const packets = Math.ceil(need / Math.max(1, it.packetSize));
                   return (
                     <li key={it.key} className="py-2 flex items-center gap-3">
                       <span className="text-2xl">{it.icon}</span>
                       <div className="flex-1">
-                        <div className="font-body text-base">{it.name}</div>
+                        <div className="font-body text-base flex items-center gap-2 flex-wrap">
+                          {it.name}
+                          {it.perishable && (
+                            <Chip color="#c44827">Perishable · {it.maxDays || 7}d</Chip>
+                          )}
+                        </div>
                         <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted">
-                          Have {it.qty}{it.unit} · Buy {packets} packets ({it.packetSize}{it.unit} each)
+                          Have {it.qty}{it.unit} · Buy {packets} packet{packets === 1 ? "" : "s"} ({it.packetSize}{it.unit} each)
+                          {it.perishable && " · top up only"}
                         </div>
                       </div>
                       <Button variant="primary" size="sm" onClick={() => restockGrocery(it.key)}>
