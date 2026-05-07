@@ -123,8 +123,19 @@ function daysSinceLast(history, dayId) {
   return Math.floor((Date.now() - last.date) / 86400000);
 }
 
-// One-line coaching tip based on goal + recovery state.
-function coachNote({ goalKey, dayRecovery, hasDay }) {
+// Coach uses workout history + today's diet + last night's sleep + recent
+// weight trend to give a personalised note. Returns the highest-priority
+// tip; if nothing flags, falls back to recovery-based guidance.
+function coachNote({
+  goalKey,
+  dayRecovery,
+  hasDay,
+  caloriesEaten,
+  calorieTarget,
+  sleep,
+  weightTrend14d, // { delta, weighIns } or null
+}) {
+  // Rest day suggestions (no scheduled training)
   if (!hasDay) {
     if (goalKey === "muscle_build" || goalKey === "bulk") {
       return "Rest fully — eat the surplus, sleep ≥7h. Light walking is plenty.";
@@ -134,21 +145,52 @@ function coachNote({ goalKey, dayRecovery, hasDay }) {
     }
     return "Active recovery: a long walk + good food + sleep.";
   }
+
+  // ---- Highest priority: red flags from sleep + diet ----
+  if (sleep?.hours != null && sleep.hours < 5.5) {
+    return `Only ${sleep.hours.toFixed(1)}h sleep — pull back today: 1 fewer set, focus on form, no PR attempts.`;
+  }
+  // Big calorie deficit on a non-cut day → low-fuel session warning
+  if (calorieTarget && caloriesEaten < calorieTarget - 600 && goalKey !== "cut") {
+    return `Under-fuelled today (${Math.round(caloriesEaten)} of ${Math.round(calorieTarget)} kcal). Hit a snack pre-workout or drop one set.`;
+  }
+  // Big calorie surplus on cut → easy to over-eat training afterwards
+  if (calorieTarget && goalKey === "cut" && caloriesEaten > calorieTarget + 400) {
+    return `Already ${Math.round(caloriesEaten - calorieTarget)} kcal over — train hard but skip post-workout extras.`;
+  }
+
+  // ---- Weight trend signal (14d) ----
+  if (weightTrend14d && weightTrend14d.weighIns >= 2) {
+    const d = weightTrend14d.delta;
+    if (goalKey === "cut" && Math.abs(d) < 0.3) {
+      return "Cut plateau — weight steady ≥14d. Consider tightening diet 100–200 kcal or adding a step day.";
+    }
+    if (goalKey === "muscle_build" || goalKey === "bulk") {
+      if (d < 0.1) {
+        return "No gain in 14d on a bulk — surplus may be too small. Add ~150 kcal/day or extra carbs around training.";
+      }
+      if (d > 1.0) {
+        return "Gaining fast (>1 kg in 14d) — ease the surplus a touch to keep gains lean.";
+      }
+    }
+  }
+
+  // ---- Recovery-based fallback (existing behaviour, slightly polished) ----
   if (dayRecovery === Infinity) {
-    return "First time on this day — pick conservative weights and learn the form. Ramp next session.";
+    return "First time on this day — pick conservative weights, learn the form, ramp next session.";
   }
   if (dayRecovery === 0) {
-    return "You already trained this day today. Consider rest or a different muscle group.";
+    return "Already trained this day today. Consider rest or a different muscle group.";
   }
   if (dayRecovery <= 1) {
-    return "Same day ≤ 24h ago. Recovery is light — keep volume modest, focus on form.";
+    return "Same muscles ≤ 24h ago. Keep volume modest, focus on form, use the suggested weights.";
   }
   if (dayRecovery <= 3) {
     return goalKey === "muscle_build" || goalKey === "bulk"
       ? "Fresh enough — push for a small weight bump on the main lifts."
       : "Good window — same weight, aim for an extra rep or two.";
   }
-  return "Long gap — ease back in. Drop ~5% load, focus on technique, then build.";
+  return "Long gap since this day — drop ~5% load, focus on technique, then build.";
 }
 
 export function Workout() {
@@ -172,6 +214,10 @@ export function Workout() {
     setSteps,
     stepAdjustKcal,
     todaysWorkoutKcal,
+    dayTotals,
+    dailyTargetKcal,
+    sleep,
+    weightLog,
   } = useApp();
 
   const programWeek =
@@ -280,6 +326,22 @@ export function Workout() {
   const totalBurnTarget = expectedKcal + expectedSteps;
   const dayRecovery = selectedDay ? daysSinceLast(history, selectedDay.id) : Infinity;
 
+  // 14-day weight trend (uses Progress measurements). Returns delta kg from
+  // first to last weigh-in inside the window so the coach can flag plateaus
+  // or runaway gains.
+  const weightTrend14d = useMemo(() => {
+    if (!weightLog || weightLog.length === 0) return null;
+    const cutoff = Date.now() - 14 * 86400000;
+    const inWindow = weightLog
+      .filter((e) => e.weightKg != null && e.date >= cutoff)
+      .sort((a, b) => a.date - b.date);
+    if (inWindow.length < 2) return null;
+    return {
+      weighIns: inWindow.length,
+      delta: inWindow[inWindow.length - 1].weightKg - inWindow[0].weightKg,
+    };
+  }, [weightLog]);
+
   return (
     <>
       {/* Coach — goal-aware overview of today's session, recovery, and what
@@ -346,8 +408,49 @@ export function Workout() {
               Coach's note
             </div>
             <p className="font-body text-sm mt-1">
-              {coachNote({ goalKey, dayRecovery, hasDay: !!selectedDay })}
+              {coachNote({
+                goalKey,
+                dayRecovery,
+                hasDay: !!selectedDay,
+                caloriesEaten: dayTotals.kcal,
+                calorieTarget: dailyTargetKcal,
+                sleep,
+                weightTrend14d,
+              })}
             </p>
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-ink-muted">
+                Considering
+              </span>
+              <Chip color="#3b6aa3">Goal: {goalTuning.label}</Chip>
+              <Chip color="#6b5a3e">
+                {dayRecovery === Infinity
+                  ? "First time"
+                  : `Recovery ${dayRecovery}d`}
+              </Chip>
+              <Chip color={dayTotals.kcal && dailyTargetKcal ? "#3b6aa3" : "#6b5a3e"}>
+                Diet {Math.round(dayTotals.kcal)}/{Math.round(dailyTargetKcal)} kcal
+              </Chip>
+              <Chip
+                color={
+                  sleep?.hours == null
+                    ? "#6b5a3e"
+                    : sleep.hours < 6
+                      ? "#c44827"
+                      : "#4a6b3e"
+                }
+              >
+                Sleep {sleep?.hours != null ? `${sleep.hours.toFixed(1)}h` : "not logged"}
+              </Chip>
+              {weightTrend14d ? (
+                <Chip color="#6b5a3e">
+                  Δ14d {weightTrend14d.delta >= 0 ? "+" : ""}
+                  {weightTrend14d.delta.toFixed(1)}kg
+                </Chip>
+              ) : (
+                <Chip color="#6b5a3e">Weight trend: log on Progress</Chip>
+              )}
+            </div>
           </div>
         </div>
       </Card>
@@ -660,12 +763,19 @@ function ExerciseRow({
 }
 
 function SetRow({ index, entry, defaultReps, placeholderWeight, onLog, onUnlog }) {
-  const [weight, setWeight] = useState(entry?.weight ?? "");
+  // Prefill the weight input with the coach's suggestion (not just as a
+  // placeholder) so the user can confirm with one tap. If they want a
+  // different weight they can edit before logging.
+  const [weight, setWeight] = useState(
+    entry?.weight ?? (placeholderWeight != null ? String(placeholderWeight) : ""),
+  );
   const [reps, setReps] = useState(entry?.reps ?? defaultReps);
   useEffect(() => {
-    setWeight(entry?.weight ?? "");
+    setWeight(
+      entry?.weight ?? (placeholderWeight != null ? String(placeholderWeight) : ""),
+    );
     setReps(entry?.reps ?? defaultReps);
-  }, [entry, defaultReps]);
+  }, [entry, defaultReps, placeholderWeight]);
 
   const done = !!entry;
 
