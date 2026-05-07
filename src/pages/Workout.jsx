@@ -87,15 +87,49 @@ function lastBestSet(history, exerciseId) {
   return null;
 }
 
+// Conservative first-session starting weight, derived from bodyweight +
+// exercise classification. Rough but better than an empty input — the user
+// can adjust on the fly and subsequent sessions use real history.
+function startingWeight(exerciseName, weightKg) {
+  if (!weightKg) return null;
+  const n = (exerciseName || "").toLowerCase();
+  let frac;
+  if (/deadlift/.test(n)) frac = 0.7;
+  else if (/squat|hip thrust|leg press|front squat|back squat/.test(n)) frac = 0.5;
+  else if (/bench|chest press|shoulder press|overhead press|incline/.test(n)) frac = 0.4;
+  else if (/row|pulldown|pull-?up|seated row|lat/.test(n)) frac = 0.4;
+  else if (/dip/.test(n)) frac = 0.0; // bodyweight-anchored, assisted to 0
+  else if (/curl|extension|raise|fly|flye|kickback|pushdown|face pull/.test(n)) frac = 0.1;
+  else if (/calf/.test(n)) frac = 0.3;
+  else if (/plank|hanging leg raise|crunch|sit-?up/.test(n)) return 0; // bodyweight
+  else frac = 0.25;
+  // Round to nearest 2.5 kg (standard plate increment)
+  return Math.round((weightKg * frac) / 2.5) * 2.5;
+}
+
 // Suggest target weight + reps for the next session based on last best,
-// the goal direction, and the program's prescribed reps. Returns null if
-// no history yet (user should pick a comfortable starting weight).
-function suggestNextSet({ lastBest, goalKey, baseReps }) {
-  if (!lastBest) return null;
-  const w = Number(lastBest.weight) || 0;
-  const r = Number(lastBest.reps) || 0;
+// the goal direction, and the program's prescribed reps. When there's no
+// history yet, derives a starting weight from bodyweight + exercise type
+// so the user always sees a suggested number to work from.
+function suggestNextSet({ lastBest, goalKey, baseReps, exerciseName, userWeightKg }) {
   const tuning = GOAL_TUNING[goalKey] || GOAL_TUNING.maintain;
   const targetReps = Math.max(3, baseReps + tuning.repsDelta);
+
+  if (!lastBest) {
+    const startW = startingWeight(exerciseName, userWeightKg);
+    if (startW == null) return null;
+    return {
+      weight: startW,
+      reps: targetReps,
+      note:
+        startW === 0
+          ? "First time — start with bodyweight, scale next session"
+          : "First time — conservative start (≈ ratio of body weight)",
+      firstTime: true,
+    };
+  }
+  const w = Number(lastBest.weight) || 0;
+  const r = Number(lastBest.reps) || 0;
 
   // Did they hit (or exceed) the program's target reps last time?
   const hitTarget = r >= targetReps;
@@ -641,6 +675,8 @@ export function Workout() {
                 lastBest: lb,
                 goalKey,
                 baseReps: ex.reps,
+                exerciseName: ex.name,
+                userWeightKg,
               });
               return (
                 <ExerciseRow
@@ -713,10 +749,14 @@ function ExerciseRow({
           </div>
           <h3 className="font-display text-xl font-bold mt-1">{exercise.name}</h3>
           {suggestion && (
-            <div className="mt-1 inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.2em]">
-              <TrendingUp size={11} className="text-good" />
+            <div className="mt-1 inline-flex items-start flex-wrap gap-x-1.5 gap-y-0.5 font-mono text-[10px] uppercase tracking-[0.2em]">
+              {suggestion.firstTime ? (
+                <Zap size={11} className="text-good mt-[3px]" />
+              ) : (
+                <TrendingUp size={11} className="text-good mt-[3px]" />
+              )}
               <span className="text-good font-bold">
-                Try {suggestion.weight} kg × {suggestion.reps}
+                {suggestion.firstTime ? "Start at" : "Try"} {suggestion.weight} kg × {suggestion.reps}
               </span>
               <span className="text-ink-muted normal-case font-body italic">
                 — {suggestion.note}
@@ -726,7 +766,7 @@ function ExerciseRow({
           {!suggestion && !lastBest && (
             <div className="mt-1 inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted">
               <Zap size={11} />
-              First time — start light, learn the form
+              First time — set your bodyweight on Profile to get a starting suggestion
             </div>
           )}
         </div>
