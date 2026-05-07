@@ -1,0 +1,531 @@
+import { useEffect, useMemo, useState } from "react";
+import { useApp } from "../store/AppContext.jsx";
+import { Card, CardHeader, Stat } from "../components/ui/Card.jsx";
+import { Button, IconButton } from "../components/ui/Button.jsx";
+import { Chip, ProgressBar, TextInput } from "../components/ui/Field.jsx";
+import { Modal } from "../components/ui/Modal.jsx";
+import { DAYS_SHORT, formatMMSS, dayOfWeek } from "../lib/time.js";
+import { estimateWorkoutKcal } from "../lib/calories.js";
+import {
+  Play,
+  Pause,
+  RotateCcw,
+  Check,
+  CheckCircle,
+  X,
+  Youtube,
+  Timer,
+  Flame,
+} from "lucide-react";
+
+const SEC_PER_REP = 3;
+const SETUP_SEC = 5;
+const WARMUP_SEC = 5 * 60;
+
+function estimateMinutes(day) {
+  if (!day) return 0;
+  const total = day.exercises.reduce(
+    (s, ex) => s + ex.sets * (ex.reps * SEC_PER_REP + SETUP_SEC + ex.restSec),
+    WARMUP_SEC,
+  );
+  return Math.round(total / 60);
+}
+
+export function Workout() {
+  const {
+    activeProgram,
+    weeks,
+    setProgramWeek,
+    resetProgramWeek,
+    todaysDayId,
+    profile,
+    currentSession,
+    startSession,
+    pauseSession,
+    resumeSession,
+    finishSession,
+    cancelSession,
+    logSet,
+    unlogSet,
+    history,
+  } = useApp();
+
+  const programWeek =
+    weeks[activeProgram.id] || activeProgram.defaultWeek;
+
+  // The day being trained is either the in-progress session day, the today's
+  // scheduled day, or the user's manual selection.
+  const initialDayId = useMemo(() => {
+    if (currentSession) return currentSession.dayId;
+    if (todaysDayId && todaysDayId !== "rest") return todaysDayId;
+    return activeProgram.days[0]?.id;
+  }, [currentSession, todaysDayId, activeProgram]);
+
+  const [selectedDayId, setSelectedDayId] = useState(initialDayId);
+  useEffect(() => setSelectedDayId(initialDayId), [initialDayId]);
+
+  const selectedDay =
+    activeProgram.days.find((d) => d.id === selectedDayId) ||
+    activeProgram.days[0];
+
+  // Live elapsed time
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!currentSession || currentSession.paused) return;
+    const t = setInterval(() => setTick((n) => n + 1), 1000);
+    return () => clearInterval(t);
+  }, [currentSession]);
+
+  const elapsedSec = currentSession
+    ? currentSession.paused
+      ? currentSession.accumSec
+      : currentSession.accumSec + (Date.now() - currentSession.resumedAt) / 1000
+    : 0;
+
+  // Toggle a day on the week chip
+  function cycleWeekDay(dayIdx) {
+    const ids = ["rest", ...activeProgram.days.map((d) => d.id)];
+    const cur = programWeek[dayIdx] || "rest";
+    const idx = ids.indexOf(cur);
+    const nextId = ids[(idx + 1) % ids.length];
+    const newWeek = [...programWeek];
+    newWeek[dayIdx] = nextId;
+    setProgramWeek(activeProgram.id, newWeek);
+  }
+
+  function dayChipLabel(id) {
+    if (id === "rest") return "Rest";
+    return activeProgram.days.find((d) => d.id === id)?.name || "—";
+  }
+
+  const [summary, setSummary] = useState(null);
+  function handleFinish() {
+    const program = activeProgram;
+    const day = selectedDay;
+    let totalSets = 0;
+    let totalReps = 0;
+    let totalVolume = 0;
+    for (const ex of day.exercises) {
+      const sets = (currentSession.log[ex.id] || []).filter(Boolean);
+      totalSets += sets.length;
+      for (const set of sets) {
+        totalReps += Number(set.reps) || 0;
+        totalVolume += (Number(set.weight) || 0) * (Number(set.reps) || 0);
+      }
+    }
+    const durationSec = Math.round(elapsedSec);
+    const kcalBurned = estimateWorkoutKcal({
+      durationSec,
+      weightKg: profile.stats?.weightKg || profile.weightKg || 70,
+      totalVolume,
+    });
+    setSummary({
+      programName: program.name,
+      dayName: day.name,
+      durationSec,
+      totalSets,
+      totalReps,
+      totalVolume: Math.round(totalVolume),
+      kcalBurned,
+    });
+    finishSession();
+  }
+
+  function lastBest(exerciseId) {
+    for (const h of history) {
+      const ex = h.exercises.find((e) => e.id === exerciseId);
+      if (ex && ex.sets.length) {
+        const top = ex.sets.reduce(
+          (best, s) => ((s.weight || 0) > (best.weight || 0) ? s : best),
+          ex.sets[0],
+        );
+        return top;
+      }
+    }
+    return null;
+  }
+
+  const estDuration = estimateMinutes(selectedDay);
+
+  return (
+    <>
+      <Card>
+        <CardHeader
+          kicker="Your Week"
+          title={activeProgram.name}
+          subtitle={activeProgram.subtitle}
+          right={
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => resetProgramWeek(activeProgram.id)}
+            >
+              <RotateCcw size={12} /> Reset
+            </Button>
+          }
+        />
+        <div className="grid grid-cols-7 gap-2">
+          {programWeek.map((id, i) => {
+            const isToday = i === dayOfWeek();
+            const isRest = id === "rest";
+            return (
+              <button
+                key={i}
+                onClick={() => cycleWeekDay(i)}
+                className={`border-2 py-2 px-1 text-center transition-colors ${
+                  isToday ? "border-accent" : "border-ink"
+                } ${isRest ? "bg-paper text-ink-muted" : "bg-ink text-paper"}`}
+              >
+                <div className="font-mono text-[9px] uppercase tracking-[0.2em] opacity-80">
+                  {DAYS_SHORT[i]}
+                </div>
+                <div className="font-display text-sm font-bold mt-1">
+                  {dayChipLabel(id)}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+        <p className="font-body text-sm italic text-ink-muted mt-3">
+          Tap a day to cycle through this program's training days. Saved automatically.
+        </p>
+      </Card>
+
+      <Card>
+        <CardHeader
+          kicker={selectedDay?.name || "Rest"}
+          title="Today's Session"
+          subtitle={
+            selectedDay
+              ? `${selectedDay.exercises.length} exercises · ~${estDuration} min`
+              : "Active recovery"
+          }
+          right={
+            <div className="flex flex-col items-end gap-1">
+              <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted">
+                Session
+              </div>
+              <div className="font-display text-3xl font-black tabular-nums">
+                {formatMMSS(elapsedSec)}
+              </div>
+              <ProgressBar value={elapsedSec / 60} max={60} />
+              <div className="flex gap-2 mt-2">
+                {!currentSession ? (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => startSession(activeProgram.id, selectedDay.id)}
+                  >
+                    <Play size={12} /> Start
+                  </Button>
+                ) : currentSession.paused ? (
+                  <Button variant="primary" size="sm" onClick={resumeSession}>
+                    <Play size={12} /> Resume
+                  </Button>
+                ) : (
+                  <Button variant="outline" size="sm" onClick={pauseSession}>
+                    <Pause size={12} /> Pause
+                  </Button>
+                )}
+                {currentSession && (
+                  <>
+                    <Button variant="primary" size="sm" onClick={handleFinish}>
+                      <CheckCircle size={12} /> Finish
+                    </Button>
+                    <Button variant="danger" size="sm" onClick={cancelSession}>
+                      <X size={12} /> Cancel
+                    </Button>
+                  </>
+                )}
+              </div>
+            </div>
+          }
+        />
+
+        {/* Day tabs */}
+        <div className="flex flex-wrap gap-2 mb-4">
+          {activeProgram.days.map((d) => (
+            <button
+              key={d.id}
+              onClick={() => setSelectedDayId(d.id)}
+              className={`px-3 py-1.5 border-2 font-mono text-[10px] uppercase tracking-[0.2em] ${
+                selectedDayId === d.id
+                  ? "bg-ink text-paper border-ink"
+                  : "border-ink hover:bg-ink hover:text-paper"
+              }`}
+              style={
+                selectedDayId === d.id ? { backgroundColor: d.accent, borderColor: d.accent } : {}
+              }
+            >
+              {d.name}
+            </button>
+          ))}
+        </div>
+
+        {selectedDay && (
+          <ul className="space-y-3">
+            {selectedDay.exercises.map((ex) => (
+              <ExerciseRow
+                key={ex.id}
+                exercise={ex}
+                accent={selectedDay.accent}
+                inSession={!!currentSession}
+                log={currentSession?.log?.[ex.id] || []}
+                lastBest={lastBest(ex.id)}
+                onLog={(setIndex, data) => logSet(ex.id, setIndex, data)}
+                onUnlog={(setIndex) => unlogSet(ex.id, setIndex)}
+              />
+            ))}
+          </ul>
+        )}
+      </Card>
+
+      <RestTimer />
+
+      <FinishSummaryModal summary={summary} onClose={() => setSummary(null)} />
+    </>
+  );
+}
+
+function ExerciseRow({ exercise, accent, inSession, log, lastBest, onLog, onUnlog }) {
+  const sets = Array.from({ length: exercise.sets });
+  return (
+    <li className="border-2 border-ink p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span
+              className="font-mono text-[9px] uppercase tracking-[0.2em] border px-1.5 py-0.5"
+              style={{ color: accent, borderColor: accent }}
+            >
+              {exercise.sets} × {exercise.reps}
+            </span>
+            <Chip>Rest {exercise.restSec}s</Chip>
+            {lastBest && (
+              <Chip color="#6b5a3e">
+                Last best {lastBest.weight || 0}kg × {lastBest.reps}
+              </Chip>
+            )}
+          </div>
+          <h3 className="font-display text-xl font-bold mt-1">{exercise.name}</h3>
+        </div>
+        {exercise.url && (
+          <a
+            href={exercise.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="border-2 border-ink p-1.5 hover:bg-ink hover:text-paper transition-colors"
+            aria-label="Watch demo"
+          >
+            <Youtube size={14} />
+          </a>
+        )}
+      </div>
+
+      {inSession && (
+        <div className="mt-3 grid gap-2">
+          {sets.map((_, i) => (
+            <SetRow
+              key={i}
+              index={i}
+              entry={log[i]}
+              defaultReps={exercise.reps}
+              placeholderWeight={lastBest?.weight}
+              onLog={(data) => onLog(i, data)}
+              onUnlog={() => onUnlog(i)}
+            />
+          ))}
+        </div>
+      )}
+    </li>
+  );
+}
+
+function SetRow({ index, entry, defaultReps, placeholderWeight, onLog, onUnlog }) {
+  const [weight, setWeight] = useState(entry?.weight ?? "");
+  const [reps, setReps] = useState(entry?.reps ?? defaultReps);
+  useEffect(() => {
+    setWeight(entry?.weight ?? "");
+    setReps(entry?.reps ?? defaultReps);
+  }, [entry, defaultReps]);
+
+  const done = !!entry;
+
+  return (
+    <div
+      className={`flex items-center gap-2 border ${done ? "border-good bg-good/5" : "border-ink/40"} px-2 py-1.5`}
+    >
+      <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted w-12">
+        Set {index + 1}
+      </span>
+      <TextInput
+        type="number"
+        step="0.5"
+        value={weight}
+        disabled={done}
+        placeholder={placeholderWeight ? String(placeholderWeight) : "kg"}
+        onChange={(e) => setWeight(e.target.value)}
+        className="!w-20 !py-1 !text-sm"
+      />
+      <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted">
+        ×
+      </span>
+      <TextInput
+        type="number"
+        value={reps}
+        disabled={done}
+        onChange={(e) => setReps(e.target.value)}
+        className="!w-16 !py-1 !text-sm"
+      />
+      {done ? (
+        <IconButton
+          onClick={onUnlog}
+          aria-label="Undo set"
+          className="!border-good !text-good hover:!bg-good hover:!text-paper"
+        >
+          <Check size={14} />
+        </IconButton>
+      ) : (
+        <IconButton
+          onClick={() =>
+            onLog({
+              weight: Number(weight) || 0,
+              reps: Number(reps) || 0,
+            })
+          }
+          aria-label="Log set"
+        >
+          <Check size={14} />
+        </IconButton>
+      )}
+    </div>
+  );
+}
+
+function RestTimer() {
+  const [duration, setDuration] = useState(90);
+  const [remaining, setRemaining] = useState(90);
+  const [running, setRunning] = useState(false);
+  const presets = [45, 60, 90, 120, 180];
+
+  useEffect(() => {
+    if (!running) return;
+    const t = setInterval(() => {
+      setRemaining((r) => {
+        if (r <= 1) {
+          setRunning(false);
+          if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 400]);
+          return 0;
+        }
+        return r - 1;
+      });
+    }, 1000);
+    return () => clearInterval(t);
+  }, [running]);
+
+  function start() {
+    if (remaining === 0) setRemaining(duration);
+    setRunning(true);
+  }
+  function pause() {
+    setRunning(false);
+  }
+  function reset() {
+    setRemaining(duration);
+    setRunning(false);
+  }
+  function setPreset(secs) {
+    setDuration(secs);
+    setRemaining(secs);
+    setRunning(false);
+  }
+
+  const isAlarming = remaining === 0;
+
+  return (
+    <div
+      className={`fixed bottom-4 right-4 md:bottom-6 md:right-6 border-2 border-ink bg-paper p-3 w-64 shadow-lg z-30 ${isAlarming ? "pulse-ring" : ""}`}
+    >
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-1.5">
+          <Timer size={14} />
+          <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted">
+            Rest Timer
+          </span>
+        </div>
+        <span
+          className="font-display text-2xl font-black tabular-nums"
+          style={{ color: isAlarming ? "#c44827" : "#2a2419" }}
+        >
+          {formatMMSS(remaining)}
+        </span>
+      </div>
+      <div className="flex flex-wrap gap-1 mb-2">
+        {presets.map((s) => (
+          <button
+            key={s}
+            onClick={() => setPreset(s)}
+            className={`flex-1 border font-mono text-[10px] uppercase tracking-[0.18em] py-1 ${
+              duration === s
+                ? "bg-ink text-paper border-ink"
+                : "border-ink hover:bg-ink hover:text-paper"
+            }`}
+          >
+            {s < 120 ? `${s}s` : `${s / 60}m`}
+          </button>
+        ))}
+      </div>
+      <div className="flex gap-1">
+        <Button variant="primary" size="sm" className="flex-1" onClick={running ? pause : start}>
+          {running ? <Pause size={12} /> : <Play size={12} />}
+          {running ? "Pause" : "Start"}
+        </Button>
+        <IconButton onClick={reset} aria-label="Reset">
+          <RotateCcw size={14} />
+        </IconButton>
+      </div>
+    </div>
+  );
+}
+
+function FinishSummaryModal({ summary, onClose }) {
+  if (!summary) return null;
+  return (
+    <Modal
+      open={!!summary}
+      onClose={onClose}
+      title="Workout complete"
+      footer={
+        <Button variant="primary" onClick={onClose}>
+          Done
+        </Button>
+      }
+    >
+      <div className="grid grid-cols-2 gap-3">
+        <Stat label="Duration" value={formatMMSS(summary.durationSec)} />
+        <Stat label="Sets" value={summary.totalSets} />
+        <Stat label="Reps" value={summary.totalReps} accent="#3b6aa3" />
+        <Stat
+          label="Volume"
+          value={summary.totalVolume.toLocaleString()}
+          suffix="kg"
+          accent="#6b5a3e"
+        />
+        <Stat
+          label="Kcal Burned"
+          value={summary.kcalBurned}
+          suffix="kcal"
+          accent="#c44827"
+        />
+        <Stat label={summary.dayName} value={summary.programName} />
+      </div>
+      <p className="font-body text-base italic text-ink-muted mt-4">
+        Calories burned have been added to today's diet budget — you've got{" "}
+        <strong className="not-italic font-medium" style={{ color: "#c44827" }}>
+          {summary.kcalBurned} kcal
+        </strong>{" "}
+        more to play with on the plate today.
+      </p>
+    </Modal>
+  );
+}
