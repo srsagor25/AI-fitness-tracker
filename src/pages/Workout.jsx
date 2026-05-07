@@ -4,8 +4,12 @@ import { Card, CardHeader, Stat } from "../components/ui/Card.jsx";
 import { Button, IconButton } from "../components/ui/Button.jsx";
 import { Chip, ProgressBar, TextInput } from "../components/ui/Field.jsx";
 import { Modal } from "../components/ui/Modal.jsx";
-import { DAYS_SHORT, formatMMSS, dayOfWeek } from "../lib/time.js";
-import { estimateWorkoutKcal } from "../lib/calories.js";
+import { DAYS_SHORT, formatMMSS, dayOfWeek, todayKey } from "../lib/time.js";
+import {
+  estimateWorkoutKcal,
+  expectedTrainingKcal,
+  stepsToKcal,
+} from "../lib/calories.js";
 import {
   Play,
   Pause,
@@ -16,6 +20,9 @@ import {
   Youtube,
   Timer,
   Flame,
+  TrendingUp,
+  Target,
+  Zap,
 } from "lucide-react";
 
 const SEC_PER_REP = 3;
@@ -29,6 +36,119 @@ function estimateMinutes(day) {
     WARMUP_SEC,
   );
   return Math.round(total / 60);
+}
+
+// ----------------------------------------------------------------------------
+// Goal-aware coaching: rep range, rest, intensity targeting per goal direction.
+// ----------------------------------------------------------------------------
+const GOAL_TUNING = {
+  cut: {
+    label: "Cut",
+    repsDelta: +2,         // higher reps to maintain workload at lighter loads
+    restMultiplier: 0.85,  // shorter rest, density work
+    intensityCue: "65–75% 1RM · same weight, +1 rep each session",
+    overloadKind: "reps",
+  },
+  maintain: {
+    label: "Maintain",
+    repsDelta: 0,
+    restMultiplier: 1.0,
+    intensityCue: "70–80% 1RM · alternate +rep one week, +weight next",
+    overloadKind: "alternate",
+  },
+  bulk: {
+    label: "Bulk",
+    repsDelta: -1,
+    restMultiplier: 1.15,
+    intensityCue: "75–85% 1RM · +2.5 kg when you hit all reps",
+    overloadKind: "weight",
+  },
+  muscle_build: {
+    label: "Muscle build",
+    repsDelta: -2,
+    restMultiplier: 1.2,
+    intensityCue: "75–85% 1RM hypertrophy · +2.5 kg when you nail reps",
+    overloadKind: "weight",
+  },
+};
+
+// Look back through history for the most recent best (heaviest) logged set
+// of this exercise. Returns null if never trained.
+function lastBestSet(history, exerciseId) {
+  for (const h of history) {
+    const ex = h.exercises.find((e) => e.id === exerciseId);
+    if (ex && ex.sets.length) {
+      return ex.sets.reduce(
+        (best, s) => ((s.weight || 0) > (best.weight || 0) ? s : best),
+        ex.sets[0],
+      );
+    }
+  }
+  return null;
+}
+
+// Suggest target weight + reps for the next session based on last best,
+// the goal direction, and the program's prescribed reps. Returns null if
+// no history yet (user should pick a comfortable starting weight).
+function suggestNextSet({ lastBest, goalKey, baseReps }) {
+  if (!lastBest) return null;
+  const w = Number(lastBest.weight) || 0;
+  const r = Number(lastBest.reps) || 0;
+  const tuning = GOAL_TUNING[goalKey] || GOAL_TUNING.maintain;
+  const targetReps = Math.max(3, baseReps + tuning.repsDelta);
+
+  // Did they hit (or exceed) the program's target reps last time?
+  const hitTarget = r >= targetReps;
+
+  if (tuning.overloadKind === "weight") {
+    if (hitTarget) {
+      return { weight: w + 2.5, reps: targetReps, note: "+2.5 kg from last best" };
+    }
+    return { weight: w, reps: r + 1, note: `Same weight, push for ${r + 1} reps` };
+  }
+  if (tuning.overloadKind === "reps") {
+    return { weight: w, reps: r + 1, note: `Same weight, ${r + 1} reps today` };
+  }
+  // Alternate weeks
+  if (hitTarget) {
+    return { weight: w + 2.5, reps: targetReps, note: "+2.5 kg, drop reps to base" };
+  }
+  return { weight: w, reps: r + 1, note: "Same weight, +1 rep" };
+}
+
+// Days since the user last trained the same day-id.
+function daysSinceLast(history, dayId) {
+  const last = history.find((h) => h.dayId === dayId);
+  if (!last) return Infinity;
+  return Math.floor((Date.now() - last.date) / 86400000);
+}
+
+// One-line coaching tip based on goal + recovery state.
+function coachNote({ goalKey, dayRecovery, hasDay }) {
+  if (!hasDay) {
+    if (goalKey === "muscle_build" || goalKey === "bulk") {
+      return "Rest fully — eat the surplus, sleep ≥7h. Light walking is plenty.";
+    }
+    if (goalKey === "cut") {
+      return "Rest day — walk to step goal, hit protein, stay near calorie target.";
+    }
+    return "Active recovery: a long walk + good food + sleep.";
+  }
+  if (dayRecovery === Infinity) {
+    return "First time on this day — pick conservative weights and learn the form. Ramp next session.";
+  }
+  if (dayRecovery === 0) {
+    return "You already trained this day today. Consider rest or a different muscle group.";
+  }
+  if (dayRecovery <= 1) {
+    return "Same day ≤ 24h ago. Recovery is light — keep volume modest, focus on form.";
+  }
+  if (dayRecovery <= 3) {
+    return goalKey === "muscle_build" || goalKey === "bulk"
+      ? "Fresh enough — push for a small weight bump on the main lifts."
+      : "Good window — same weight, aim for an extra rep or two.";
+  }
+  return "Long gap — ease back in. Drop ~5% load, focus on technique, then build.";
 }
 
 export function Workout() {
@@ -151,8 +271,87 @@ export function Workout() {
 
   const estDuration = estimateMinutes(selectedDay);
 
+  // Coaching context — used by the Coach card and per-exercise prescriptions.
+  const goalKey = profile.goalKey || "maintain";
+  const goalTuning = GOAL_TUNING[goalKey] || GOAL_TUNING.maintain;
+  const userWeightKg = profile.stats?.weightKg || 70;
+  const expectedKcal = expectedTrainingKcal({ day: selectedDay, weightKg: userWeightKg });
+  const expectedSteps = stepsToKcal(profile.stepAdjust?.baseline || 10000, userWeightKg);
+  const totalBurnTarget = expectedKcal + expectedSteps;
+  const dayRecovery = selectedDay ? daysSinceLast(history, selectedDay.id) : Infinity;
+
   return (
     <>
+      {/* Coach — goal-aware overview of today's session, recovery, and what
+          intensity / overload approach to use. */}
+      <Card>
+        <CardHeader
+          kicker="Coach"
+          title={
+            selectedDay
+              ? `${goalTuning.label} · ${selectedDay.name}`
+              : `${goalTuning.label} · Rest day`
+          }
+          subtitle={
+            selectedDay
+              ? `${selectedDay.exercises.length} exercises · ~${estDuration} min · ${goalTuning.intensityCue}`
+              : "Recovery day. Walk, hydrate, eat target calories."
+          }
+          right={
+            <Chip color="#c44827">
+              <Target size={10} className="inline mr-1" /> Goal: {goalTuning.label}
+            </Chip>
+          }
+        />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <Stat
+            label="Burn target"
+            value={Math.round(totalBurnTarget)}
+            suffix="kcal"
+            accent="#4a6b3e"
+          />
+          <Stat
+            label="From training"
+            value={`~${expectedKcal}`}
+            suffix="kcal"
+            accent="#3b6aa3"
+          />
+          <Stat
+            label="From steps"
+            value={`~${expectedSteps}`}
+            suffix="kcal"
+            accent="#6b5a3e"
+          />
+          <Stat
+            label="Recovery"
+            value={
+              dayRecovery === Infinity
+                ? "First time"
+                : dayRecovery === 0
+                  ? "Today"
+                  : `${dayRecovery}d`
+            }
+            suffix="ago"
+          />
+        </div>
+        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="border-2 border-ink p-3">
+            <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted">
+              Today's intensity
+            </div>
+            <p className="font-body text-sm mt-1">{goalTuning.intensityCue}</p>
+          </div>
+          <div className="border-2 border-ink p-3">
+            <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted">
+              Coach's note
+            </div>
+            <p className="font-body text-sm mt-1">
+              {coachNote({ goalKey, dayRecovery, hasDay: !!selectedDay })}
+            </p>
+          </div>
+        </div>
+      </Card>
+
       {/* Daily activity: steps & today's training-kcal — both feed into the
           diet calorie target via stepAdjustKcal and todaysWorkoutKcal. */}
       <Card>
@@ -333,18 +532,28 @@ export function Workout() {
 
         {selectedDay && (
           <ul className="space-y-3">
-            {selectedDay.exercises.map((ex) => (
-              <ExerciseRow
-                key={ex.id}
-                exercise={ex}
-                accent={selectedDay.accent}
-                inSession={!!currentSession}
-                log={currentSession?.log?.[ex.id] || []}
-                lastBest={lastBest(ex.id)}
-                onLog={(setIndex, data) => logSet(ex.id, setIndex, data)}
-                onUnlog={(setIndex) => unlogSet(ex.id, setIndex)}
-              />
-            ))}
+            {selectedDay.exercises.map((ex) => {
+              const lb = lastBest(ex.id);
+              const suggestion = suggestNextSet({
+                lastBest: lb,
+                goalKey,
+                baseReps: ex.reps,
+              });
+              return (
+                <ExerciseRow
+                  key={ex.id}
+                  exercise={ex}
+                  accent={selectedDay.accent}
+                  inSession={!!currentSession}
+                  log={currentSession?.log?.[ex.id] || []}
+                  lastBest={lb}
+                  suggestion={suggestion}
+                  goalTuning={goalTuning}
+                  onLog={(setIndex, data) => logSet(ex.id, setIndex, data)}
+                  onUnlog={(setIndex) => unlogSet(ex.id, setIndex)}
+                />
+              );
+            })}
           </ul>
         )}
       </Card>
@@ -356,8 +565,26 @@ export function Workout() {
   );
 }
 
-function ExerciseRow({ exercise, accent, inSession, log, lastBest, onLog, onUnlog }) {
+function ExerciseRow({
+  exercise,
+  accent,
+  inSession,
+  log,
+  lastBest,
+  suggestion,
+  goalTuning,
+  onLog,
+  onUnlog,
+}) {
   const sets = Array.from({ length: exercise.sets });
+  // Goal-adjusted reps: shifted by the goal direction (e.g. cut +2 reps,
+  // muscle build −2 reps for heavier load). Rest is also goal-scaled.
+  const goalReps = Math.max(3, exercise.reps + (goalTuning?.repsDelta || 0));
+  const goalRest = Math.max(30, Math.round(exercise.restSec * (goalTuning?.restMultiplier || 1)));
+  const repsAdjusted = goalReps !== exercise.reps;
+  const restAdjusted = goalRest !== exercise.restSec;
+  const defaultRepsForInputs = suggestion?.reps || goalReps;
+
   return (
     <li className="border-2 border-ink p-3">
       <div className="flex items-start justify-between gap-3">
@@ -369,14 +596,36 @@ function ExerciseRow({ exercise, accent, inSession, log, lastBest, onLog, onUnlo
             >
               {exercise.sets} × {exercise.reps}
             </span>
-            <Chip>Rest {exercise.restSec}s</Chip>
+            {repsAdjusted && (
+              <Chip color="#c44827">
+                {goalTuning.label}: {exercise.sets} × {goalReps}
+              </Chip>
+            )}
+            <Chip>Rest {goalRest}s{restAdjusted ? ` (${goalTuning.label})` : ""}</Chip>
             {lastBest && (
               <Chip color="#6b5a3e">
-                Last best {lastBest.weight || 0}kg × {lastBest.reps}
+                Last {lastBest.weight || 0}kg × {lastBest.reps}
               </Chip>
             )}
           </div>
           <h3 className="font-display text-xl font-bold mt-1">{exercise.name}</h3>
+          {suggestion && (
+            <div className="mt-1 inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.2em]">
+              <TrendingUp size={11} className="text-good" />
+              <span className="text-good font-bold">
+                Try {suggestion.weight} kg × {suggestion.reps}
+              </span>
+              <span className="text-ink-muted normal-case font-body italic">
+                — {suggestion.note}
+              </span>
+            </div>
+          )}
+          {!suggestion && !lastBest && (
+            <div className="mt-1 inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted">
+              <Zap size={11} />
+              First time — start light, learn the form
+            </div>
+          )}
         </div>
         {exercise.url && (
           <a
@@ -398,8 +647,8 @@ function ExerciseRow({ exercise, accent, inSession, log, lastBest, onLog, onUnlo
               key={i}
               index={i}
               entry={log[i]}
-              defaultReps={exercise.reps}
-              placeholderWeight={lastBest?.weight}
+              defaultReps={defaultRepsForInputs}
+              placeholderWeight={suggestion?.weight ?? lastBest?.weight}
               onLog={(data) => onLog(i, data)}
               onUnlog={() => onUnlog(i)}
             />

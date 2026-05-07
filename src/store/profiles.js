@@ -1,27 +1,30 @@
 // Ported from Diet & Grocery Manager. FOODS, Saidur/Blank profile templates.
 
+// Per-unit macros. fat & carbs use USDA-style reference values so meal totals
+// reflect full macros out of the box. Users can still override per-food on
+// the Foods tab; those overrides take precedence at calc time.
 export const FOODS = {
-  chicken_thigh:      { key: "chicken_thigh",      display: "Chicken Thigh (skinless)",  unit: "g",     kcal: 1.45, protein: 0.21,  groceryKey: "chicken_thigh" },
-  chicken_legs:       { key: "chicken_legs",       display: "Chicken Legs (skinless)",   unit: "g",     kcal: 1.20, protein: 0.20,  groceryKey: "chicken_legs" },
-  chicken_breast:     { key: "chicken_breast",     display: "Chicken Breast",            unit: "g",     kcal: 1.65, protein: 0.31,  groceryKey: "chicken_breast" },
-  beef_lean:          { key: "beef_lean",          display: "Lean Beef (pur cut)",       unit: "g",     kcal: 1.70, protein: 0.21,  groceryKey: "beef" },
-  fish:               { key: "fish",               display: "Fish (Tilapia/Rui)",        unit: "g",     kcal: 0.96, protein: 0.20,  groceryKey: "fish" },
-  egg:                { key: "egg",                display: "Egg (large)",               unit: "pc",    kcal: 72,   protein: 6.3,   groceryKey: "egg" },
-  rice:               { key: "rice",               display: "Steamed Rice (cooked)",     unit: "g",     kcal: 1.30, protein: 0.027, groceryKey: "rice" },
-  khichuri_mix:       { key: "khichuri_mix",       display: "Khichuri (cooked)",         unit: "g",     kcal: 1.30, protein: 0.040, groceryKey: null },
-  tehari_rice:        { key: "tehari_rice",        display: "Tehari Rice",               unit: "g",     kcal: 1.50, protein: 0.030, groceryKey: null },
-  pizza_regular:      { key: "pizza_regular",      display: "Pizza Slice (regular)",     unit: "slice", kcal: 250,  protein: 10,    groceryKey: null },
-  pizza_chicken_thin: { key: "pizza_chicken_thin", display: "Pizza Slice (chicken thin)", unit: "slice",kcal: 183,  protein: 13,    groceryKey: null },
-  cucumber:           { key: "cucumber",           display: "Cucumber",                  unit: "g",     kcal: 0.15, protein: 0.007, groceryKey: "cucumber" },
-  bhuna_oil:          { key: "bhuna_oil",          display: "Bhuna Oil (cooking)",       unit: "tbsp",  kcal: 120,  protein: 0,     groceryKey: "oil" },
-  ghee:               { key: "ghee",               display: "Ghee",                      unit: "tbsp",  kcal: 120,  protein: 0,     groceryKey: "ghee" },
-  oil_spray:          { key: "oil_spray",          display: "Oil Spray (air fry)",       unit: "tsp",   kcal: 40,   protein: 0,     groceryKey: "oil_spray" },
-  fruit_mixed:        { key: "fruit_mixed",        display: "Mixed Fruits",              unit: "g",     kcal: 0.60, protein: 0.008, groceryKey: "fruits" },
-  milk:               { key: "milk",               display: "Milk",                      unit: "ml",    kcal: 0.60, protein: 0.033, groceryKey: "milk" },
-  cashew:             { key: "cashew",             display: "Cashew (Kaju)",             unit: "g",     kcal: 5.53, protein: 0.18,  groceryKey: "cashew" },
-  dates:              { key: "dates",              display: "Dates (Khejur)",            unit: "g",     kcal: 2.77, protein: 0.018, groceryKey: "dates" },
-  peanut:             { key: "peanut",             display: "Peanut/Mixed Nuts",         unit: "g",     kcal: 5.85, protein: 0.26,  groceryKey: "peanut" },
-  sauce:              { key: "sauce",              display: "Sauce",                     unit: "cup",   kcal: 48,   protein: 2,     groceryKey: "sauce" },
+  chicken_thigh:      { key: "chicken_thigh",      display: "Chicken Thigh (skinless)",  unit: "g",     kcal: 1.45, protein: 0.21,  fat: 0.090,  carbs: 0,     groceryKey: "chicken_thigh" },
+  chicken_legs:       { key: "chicken_legs",       display: "Chicken Legs (skinless)",   unit: "g",     kcal: 1.20, protein: 0.20,  fat: 0.050,  carbs: 0,     groceryKey: "chicken_legs" },
+  chicken_breast:     { key: "chicken_breast",     display: "Chicken Breast",            unit: "g",     kcal: 1.65, protein: 0.31,  fat: 0.036,  carbs: 0,     groceryKey: "chicken_breast" },
+  beef_lean:          { key: "beef_lean",          display: "Lean Beef (pur cut)",       unit: "g",     kcal: 1.70, protein: 0.21,  fat: 0.100,  carbs: 0,     groceryKey: "beef" },
+  fish:               { key: "fish",               display: "Fish (Tilapia/Rui)",        unit: "g",     kcal: 0.96, protein: 0.20,  fat: 0.020,  carbs: 0,     groceryKey: "fish" },
+  egg:                { key: "egg",                display: "Egg (large)",               unit: "pc",    kcal: 72,   protein: 6.3,   fat: 4.8,    carbs: 0.4,   groceryKey: "egg" },
+  rice:               { key: "rice",               display: "Steamed Rice (cooked)",     unit: "g",     kcal: 1.30, protein: 0.027, fat: 0.003,  carbs: 0.280, groceryKey: "rice" },
+  khichuri_mix:       { key: "khichuri_mix",       display: "Khichuri (cooked)",         unit: "g",     kcal: 1.30, protein: 0.040, fat: 0.025,  carbs: 0.210, groceryKey: null },
+  tehari_rice:        { key: "tehari_rice",        display: "Tehari Rice",               unit: "g",     kcal: 1.50, protein: 0.030, fat: 0.050,  carbs: 0.270, groceryKey: null },
+  pizza_regular:      { key: "pizza_regular",      display: "Pizza Slice (regular)",     unit: "slice", kcal: 250,  protein: 10,    fat: 10,     carbs: 30,    groceryKey: null },
+  pizza_chicken_thin: { key: "pizza_chicken_thin", display: "Pizza Slice (chicken thin)", unit: "slice",kcal: 183,  protein: 13,    fat: 6,      carbs: 20,    groceryKey: null },
+  cucumber:           { key: "cucumber",           display: "Cucumber",                  unit: "g",     kcal: 0.15, protein: 0.007, fat: 0.001,  carbs: 0.036, groceryKey: "cucumber" },
+  bhuna_oil:          { key: "bhuna_oil",          display: "Bhuna Oil (cooking)",       unit: "tbsp",  kcal: 120,  protein: 0,     fat: 13.5,   carbs: 0,     groceryKey: "oil" },
+  ghee:               { key: "ghee",               display: "Ghee",                      unit: "tbsp",  kcal: 120,  protein: 0,     fat: 13,     carbs: 0,     groceryKey: "ghee" },
+  oil_spray:          { key: "oil_spray",          display: "Oil Spray (air fry)",       unit: "tsp",   kcal: 40,   protein: 0,     fat: 4.5,    carbs: 0,     groceryKey: "oil_spray" },
+  fruit_mixed:        { key: "fruit_mixed",        display: "Mixed Fruits",              unit: "g",     kcal: 0.60, protein: 0.008, fat: 0.003,  carbs: 0.150, groceryKey: "fruits" },
+  milk:               { key: "milk",               display: "Milk",                      unit: "ml",    kcal: 0.60, protein: 0.033, fat: 0.034,  carbs: 0.048, groceryKey: "milk" },
+  cashew:             { key: "cashew",             display: "Cashew (Kaju)",             unit: "g",     kcal: 5.53, protein: 0.18,  fat: 0.440,  carbs: 0.300, groceryKey: "cashew" },
+  dates:              { key: "dates",              display: "Dates (Khejur)",            unit: "g",     kcal: 2.77, protein: 0.018, fat: 0.0015, carbs: 0.750, groceryKey: "dates" },
+  peanut:             { key: "peanut",             display: "Peanut/Mixed Nuts",         unit: "g",     kcal: 5.85, protein: 0.26,  fat: 0.490,  carbs: 0.160, groceryKey: "peanut" },
+  sauce:              { key: "sauce",              display: "Sauce",                     unit: "cup",   kcal: 48,   protein: 2,     fat: 3,      carbs: 10,    groceryKey: "sauce" },
 };
 
 export const GROCERY_CATEGORIES = ["Protein", "Dairy & Shake", "Aromatics", "Moshla", "Fresh", "Pantry"];

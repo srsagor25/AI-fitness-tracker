@@ -61,7 +61,6 @@ export function Dashboard({ setTab }) {
     meds,
     medsTakenToday,
     grocery,
-    customFoods,
     addWaterEntry,
     addCoffeeEntry,
     setSteps,
@@ -183,26 +182,6 @@ export function Dashboard({ setTab }) {
       });
     }
 
-    // Foods data quality
-    const allKeys = Object.keys(FOODS);
-    const incomplete = allKeys.filter((k) => {
-      const o = customFoods[k] || {};
-      const fat = o.fat ?? FOODS[k].fat ?? 0;
-      const carbs = o.carbs ?? FOODS[k].carbs ?? 0;
-      return fat === 0 && carbs === 0;
-    });
-    if (incomplete.length > 0) {
-      list.push({
-        id: "foods",
-        icon: Apple,
-        domain: "foods",
-        label: "Foods data",
-        detail: `${incomplete.length} food${incomplete.length === 1 ? "" : "s"} missing fat/carbs`,
-        countdown: null,
-        urgency: "info",
-      });
-    }
-
     // Grocery
     const lowStock = grocery.filter((it) => it.qty <= it.lowThreshold);
     const perishLow = lowStock.filter((it) => it.perishable);
@@ -224,48 +203,85 @@ export function Dashboard({ setTab }) {
       });
     }
 
-    // Meds
-    const upcoming = [];
-    for (const med of meds) {
-      for (const t of med.reminderTimes || []) {
-        const target = timeToToday(t);
-        if (!target) continue;
-        const ms = target - nowDate;
-        const takenForThisTime = medsTakenToday.some(
-          (d) =>
-            d.medId === med.id &&
-            Math.abs(new Date(d.takenAt).getTime() - target.getTime()) < 30 * 60 * 1000,
-        );
-        if (!takenForThisTime) {
-          upcoming.push({ med, time: t, ms });
+    // Meds & Supplements — separate reminders so the user knows which is which.
+    function buildPharmaReminder(category, label, targetTab) {
+      const itemsInCat = meds.filter((m) => (m.category || "med") === category);
+      if (itemsInCat.length === 0) return null;
+      const dosesInCat = medsTakenToday.filter((d) => (d.category || "med") === category);
+      // Build full upcoming list, then find the next un-taken slot.
+      const up = [];
+      for (const med of itemsInCat) {
+        // Skip if not due today by repeat cycle
+        const every = Math.max(1, Number(med.repeatEveryDays) || 1);
+        if (every > 1) {
+          const start = med.startDate || nowDate.toISOString().slice(0, 10);
+          const today = nowDate.toISOString().slice(0, 10);
+          const days = Math.floor((new Date(today) - new Date(start)) / 86400000);
+          if (days < 0 || days % every !== 0) continue;
+        }
+        for (const t of med.reminderTimes || []) {
+          const target = timeToToday(t);
+          if (!target) continue;
+          const ms = target - nowDate;
+          const takenForThisTime = dosesInCat.some(
+            (d) =>
+              d.medId === med.id &&
+              Math.abs(new Date(d.takenAt).getTime() - target.getTime()) < 30 * 60 * 1000,
+          );
+          if (!takenForThisTime) up.push({ med, time: t, ms });
         }
       }
+      up.sort((a, b) => a.ms - b.ms);
+      const next = up.find((u) => u.ms >= -30 * 60 * 1000);
+      if (next) {
+        return {
+          id: `${category}-next`,
+          icon: Pill,
+          domain: category,
+          label: `${label} · ${next.med.name}`,
+          detail: `${next.med.defaultQuantity} ${next.med.unit} at ${next.time}${
+            up.length > 1 ? ` · +${up.length - 1} more today` : ""
+          }`,
+          countdown: next.ms,
+          urgency: next.ms < 0 ? "late" : next.ms < 3600000 ? "soon" : "scheduled",
+          targetTab,
+        };
+      }
+      // Missed (had reminders earlier today, none taken)
+      const missed = up.filter((u) => u.ms < -30 * 60 * 1000);
+      if (missed.length > 0) {
+        return {
+          id: `${category}-missed`,
+          icon: AlertCircle,
+          domain: category,
+          label: `${label} missed`,
+          detail: `${missed.length} dose${missed.length === 1 ? "" : "s"} not logged yet`,
+          countdown: null,
+          urgency: "late",
+          targetTab,
+        };
+      }
+      // Caught up if there's at least one dose and the schedule has reminder
+      // times (otherwise we'd never enter this branch anyway).
+      if (dosesInCat.length > 0) {
+        return {
+          id: `${category}-done`,
+          icon: CheckCircle2,
+          domain: category,
+          label: `${label} caught up`,
+          detail: `${dosesInCat.length} dose${dosesInCat.length === 1 ? "" : "s"} taken today`,
+          countdown: null,
+          urgency: "done",
+          targetTab,
+        };
+      }
+      return null;
     }
-    upcoming.sort((a, b) => a.ms - b.ms);
-    const next = upcoming.find((u) => u.ms >= -30 * 60 * 1000);
-    if (next) {
-      list.push({
-        id: "meds",
-        icon: Pill,
-        domain: "meds",
-        label: next.med.name,
-        detail: `${next.med.defaultQuantity} ${next.med.unit} at ${next.time}${
-          upcoming.length > 1 ? ` · +${upcoming.length - 1} more today` : ""
-        }`,
-        countdown: next.ms,
-        urgency: next.ms < 0 ? "late" : next.ms < 3600000 ? "soon" : "scheduled",
-      });
-    } else if (medsTakenToday.length > 0 && meds.length > 0) {
-      list.push({
-        id: "meds",
-        icon: CheckCircle2,
-        domain: "meds",
-        label: "Meds caught up",
-        detail: `${medsTakenToday.length} dose${medsTakenToday.length === 1 ? "" : "s"} taken today`,
-        countdown: null,
-        urgency: "done",
-      });
-    }
+
+    const medRem = buildPharmaReminder("med", "Meds", "meds");
+    if (medRem) list.push(medRem);
+    const suppRem = buildPharmaReminder("supplement", "Supps", "supplements");
+    if (suppRem) list.push(suppRem);
 
     return { list, fmtCountdown };
   }, [
@@ -278,7 +294,6 @@ export function Dashboard({ setTab }) {
     profile.workoutTime,
     profile.mealTimes,
     meals,
-    customFoods,
     grocery,
     meds,
     medsTakenToday,
@@ -540,6 +555,13 @@ export function Dashboard({ setTab }) {
             }
           />
           <div className="space-y-4">
+            <MacroRow
+              label="Calories"
+              value={Math.round(dayTotals.kcal)}
+              target={Math.round(dailyTargetKcal)}
+              unit="kcal"
+              color="#2a2419"
+            />
             <MacroRow
               label="Protein"
               value={dayTotals.protein}
