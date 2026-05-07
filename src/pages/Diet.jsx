@@ -224,21 +224,8 @@ export function Diet() {
         </div>
       )}
 
-      <CoffeeTracker
-        profile={profile}
-        log={coffeeLog}
-        onAdd={addCoffeeEntry}
-        onRemove={removeCoffeeEntry}
-        onToggleSchedule={toggleCoffeeSchedule}
-      />
-      <WaterTracker
-        profile={profile}
-        log={waterLog}
-        onAdd={addWaterEntry}
-        onRemove={removeWaterEntry}
-      />
-
-      {/* Meal slots */}
+      {/* Meal slots — primary action on this tab, placed above the secondary
+          coffee/water trackers so the user lands on what they came to log. */}
       {SLOTS.map((slot) => {
         const items = meals[slot.id];
         const totalKcal = items.reduce((s, m) => s + calc(m.items).kcal, 0);
@@ -314,6 +301,23 @@ export function Diet() {
           </Card>
         );
       })}
+
+      {/* Secondary trackers below meals so they don't push the primary action
+          off-screen. Coffee + water still get full day logs here, plus the
+          Today tab's Quick Log offers one-tap shortcuts. */}
+      <CoffeeTracker
+        profile={profile}
+        log={coffeeLog}
+        onAdd={addCoffeeEntry}
+        onRemove={removeCoffeeEntry}
+        onToggleSchedule={toggleCoffeeSchedule}
+      />
+      <WaterTracker
+        profile={profile}
+        log={waterLog}
+        onAdd={addWaterEntry}
+        onRemove={removeWaterEntry}
+      />
 
       {presetModal && (
         <PresetPickerModal
