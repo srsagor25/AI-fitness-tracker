@@ -347,6 +347,97 @@ export function Dashboard({ setTab }) {
 
   return (
     <>
+      {/* Reminders & Countdowns — first card on the Today screen so the user
+          sees what's pending before anything else. */}
+      <Card>
+        <CardHeader
+          kicker="Reminders"
+          title="What's pending today"
+          subtitle="Live countdowns across diet, training, grocery, meds and supplements."
+        />
+        {reminders.list.length === 0 ? (
+          <p className="font-body italic text-ink-muted">
+            Nothing pending — you're caught up. Quick Log below for fast entries.
+          </p>
+        ) : (
+          <ul className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            {reminders.list.map((r) => {
+              const Icon = r.icon;
+              const colors = {
+                now: "#c44827",
+                late: "#c44827",
+                soon: "#c44827",
+                scheduled: "#3b6aa3",
+                done: "#4a6b3e",
+                info: "#6b5a3e",
+              };
+              const c = colors[r.urgency] || "#2a2419";
+              const onClick = () => {
+                if (r.targetTab) return setTab(r.targetTab);
+                setTab(
+                  r.domain === "diet"
+                    ? "diet"
+                    : r.domain === "workout"
+                      ? "workout"
+                      : r.domain === "grocery"
+                        ? "grocery"
+                        : r.domain === "med"
+                          ? "meds"
+                          : r.domain === "supplement"
+                            ? "supplements"
+                            : "dashboard",
+                );
+              };
+              return (
+                <li key={r.id}>
+                  <button
+                    onClick={onClick}
+                    className="w-full text-left border-2 border-ink p-3 hover:bg-ink/5 transition-colors flex items-start gap-3"
+                    style={{ borderLeftColor: c, borderLeftWidth: 6 }}
+                  >
+                    <span className="shrink-0 mt-0.5 text-xl" style={{ color: c }}>
+                      {r.emoji || <Icon size={20} />}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-display text-base font-bold flex items-center gap-2 flex-wrap">
+                        {r.label}
+                        {r.urgency === "late" && <Chip color="#c44827">Late</Chip>}
+                        {r.urgency === "soon" && <Chip color="#c44827">Soon</Chip>}
+                        {r.urgency === "now" && <Chip color="#c44827">Now</Chip>}
+                        {r.urgency === "done" && <Chip color="#4a6b3e">Done</Chip>}
+                      </div>
+                      <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted">
+                        {r.detail}
+                      </div>
+                    </div>
+                    {r.countdown != null && (
+                      <span
+                        className="font-mono text-[10px] uppercase tracking-[0.25em] shrink-0 self-center"
+                        style={{ color: c }}
+                      >
+                        {reminders.fmtCountdown(r.countdown)}
+                      </span>
+                    )}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </Card>
+
+      <QuickLog
+        addWaterEntry={addWaterEntry}
+        addCoffeeEntry={addCoffeeEntry}
+        steps={steps}
+        setSteps={setSteps}
+        addMeasurement={addMeasurement}
+        sleep={sleep}
+        setSleepEntry={setSleepEntry}
+        latestWeight={profile.stats?.weightKg}
+        setTab={setTab}
+      />
+
       <Card>
         <CardHeader
           kicker="Today"
@@ -394,18 +485,6 @@ export function Dashboard({ setTab }) {
           weightDeltaKg={weightDeltaKg}
         />
       </Card>
-
-      <QuickLog
-        addWaterEntry={addWaterEntry}
-        addCoffeeEntry={addCoffeeEntry}
-        steps={steps}
-        setSteps={setSteps}
-        addMeasurement={addMeasurement}
-        sleep={sleep}
-        setSleepEntry={setSleepEntry}
-        latestWeight={profile.stats?.weightKg}
-        setTab={setTab}
-      />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <div className="border-2 border-ink p-3 md:p-4">
@@ -471,77 +550,6 @@ export function Dashboard({ setTab }) {
         </div>
       </div>
 
-      {/* Reminders & Countdowns */}
-      <Card>
-        <CardHeader
-          kicker="Reminders"
-          title="What's pending today"
-          subtitle="Live countdowns across diet, training, foods, grocery and meds."
-        />
-        <ul className="grid grid-cols-1 md:grid-cols-2 gap-2">
-          {reminders.list.map((r) => {
-            const Icon = r.icon;
-            const colors = {
-              now: "#c44827",
-              late: "#c44827",
-              soon: "#c44827",
-              scheduled: "#3b6aa3",
-              done: "#4a6b3e",
-              info: "#6b5a3e",
-            };
-            const c = colors[r.urgency] || "#2a2419";
-            const onClick = () => setTab(
-              r.domain === "diet" ? "diet"
-              : r.domain === "workout" ? "workout"
-              : r.domain === "foods" ? "foods"
-              : r.domain === "grocery" ? "grocery"
-              : r.domain === "meds" ? "meds"
-              : "dashboard"
-            );
-            return (
-              <li key={r.id}>
-                <button
-                  onClick={onClick}
-                  className="w-full text-left border-2 border-ink p-3 hover:bg-ink/5 transition-colors flex items-start gap-3"
-                  style={{ borderLeftColor: c, borderLeftWidth: 6 }}
-                >
-                  <span className="shrink-0 mt-0.5 text-xl" style={{ color: c }}>
-                    {r.emoji || <Icon size={20} />}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-display text-base font-bold flex items-center gap-2 flex-wrap">
-                      {r.label}
-                      {r.urgency === "late" && (
-                        <Chip color="#c44827">Late</Chip>
-                      )}
-                      {r.urgency === "soon" && (
-                        <Chip color="#c44827">Soon</Chip>
-                      )}
-                      {r.urgency === "now" && (
-                        <Chip color="#c44827">Now</Chip>
-                      )}
-                      {r.urgency === "done" && (
-                        <Chip color="#4a6b3e">Done</Chip>
-                      )}
-                    </div>
-                    <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted">
-                      {r.detail}
-                    </div>
-                  </div>
-                  {r.countdown != null && (
-                    <span
-                      className="font-mono text-[10px] uppercase tracking-[0.25em] shrink-0 self-center"
-                      style={{ color: c }}
-                    >
-                      {reminders.fmtCountdown(r.countdown)}
-                    </span>
-                  )}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      </Card>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card>
@@ -1013,9 +1021,10 @@ function QuickLog({
   latestWeight,
   setTab,
 }) {
-  const [open, setOpen] = useState(null); // null | "weight" | "sleep"
+  const [open, setOpen] = useState(null); // null | "weight" | "sleep" | "steps"
   const [confirmed, setConfirmed] = useState(null); // key of last tapped tile
   const [weight, setWeight] = useState("");
+  const [stepsDraft, setStepsDraft] = useState(steps);
   const [hours, setHours] = useState(sleep?.hours ?? "");
   const [bedTime, setBedTime] = useState(sleep?.bedTime ?? "");
   const [wakeTime, setWakeTime] = useState(sleep?.wakeTime ?? "");
@@ -1041,6 +1050,11 @@ function QuickLog({
     setSleepEntry({ hours, bedTime, wakeTime, quality });
     setOpen(null);
     flashConfirm("sleep");
+  }
+  function commitSteps() {
+    setSteps(Math.max(0, Number(stepsDraft) || 0));
+    setOpen(null);
+    flashConfirm("steps");
   }
 
   return (
@@ -1083,12 +1097,13 @@ function QuickLog({
         />
         <QuickTile
           icon={Footprints}
-          label="+1k"
-          sub="steps"
+          label="Steps"
+          sub={steps ? steps.toLocaleString() : "log"}
+          active={open === "steps"}
           confirmed={confirmed === "steps"}
           onClick={() => {
-            setSteps((steps || 0) + 1000);
-            flashConfirm("steps");
+            setStepsDraft(steps || 0);
+            setOpen(open === "steps" ? null : "steps");
           }}
         />
         <QuickTile
@@ -1131,6 +1146,43 @@ function QuickLog({
             <Button variant="outline" onClick={() => setTab && setTab("progress")}>
               Open Progress
             </Button>
+          </div>
+        </div>
+      )}
+
+      {open === "steps" && (
+        <div className="border-2 border-ink p-3 mt-3 space-y-2">
+          <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted">
+            Steps today
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setStepsDraft((v) => Math.max(0, (Number(v) || 0) - 1000))}
+            >
+              −1k
+            </Button>
+            <input
+              type="number"
+              value={stepsDraft}
+              onChange={(e) => setStepsDraft(e.target.value)}
+              placeholder="0"
+              className="flex-1 min-w-0 border-2 border-ink bg-paper px-2 py-1.5 font-display text-2xl font-black text-center"
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setStepsDraft((v) => (Number(v) || 0) + 1000)}
+            >
+              +1k
+            </Button>
+            <Button variant="primary" onClick={commitSteps}>
+              Log
+            </Button>
+          </div>
+          <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted italic">
+            Saved value will replace today's count.
           </div>
         </div>
       )}
