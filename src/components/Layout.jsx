@@ -19,7 +19,6 @@ const TAB_GROUPS = [
     tabs: [
       { id: "workout", label: "Workout" },
       { id: "programs", label: "Programs" },
-      { id: "history", label: "History" },
     ],
   },
   {
@@ -33,6 +32,10 @@ const TAB_GROUPS = [
       { id: "meds", label: "Meds" },
       { id: "profile", label: "Profile" },
     ],
+  },
+  {
+    label: "Log",
+    tabs: [{ id: "history", label: "History" }],
   },
 ];
 

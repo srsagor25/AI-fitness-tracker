@@ -131,6 +131,18 @@ export function Profile() {
               onChange={(e) => update({ workoutTime: e.target.value })}
             />
           </Field>
+          <Field
+            label="Restock alert (days before empty)"
+            hint="Auto-shopping list surfaces items projected to run out within this many days based on usage."
+          >
+            <TextInput
+              type="number"
+              min="0"
+              max="30"
+              value={profile.groceryBufferDays ?? 3}
+              onChange={(e) => update({ groceryBufferDays: Math.max(0, Number(e.target.value) || 0) })}
+            />
+          </Field>
           <Field label="Public label">
             <TextInput value={profile.publicLabel} onChange={(e) => update({ publicLabel: e.target.value })} />
           </Field>

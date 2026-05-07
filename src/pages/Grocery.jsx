@@ -12,11 +12,16 @@ import {
   RefreshCw,
   AlertTriangle,
   PackagePlus,
+  Settings,
+  TrendingDown,
 } from "lucide-react";
 
 function uid() {
   return "g_" + Math.random().toString(36).slice(2, 9);
 }
+
+// Window over which we average consumption to forecast run-out.
+const CONSUMPTION_WINDOW_DAYS = 14;
 
 export function Grocery() {
   const {
@@ -31,11 +36,67 @@ export function Grocery() {
     addManualShopping,
     toggleManualShopping,
     removeManualShopping,
+    groceryActivity,
+    profile,
+    updateProfile,
   } = useApp();
 
   const [view, setView] = useState("inventory");
   const [editing, setEditing] = useState(null);
   const [manualInput, setManualInput] = useState("");
+
+  const bufferDays = Number(profile.groceryBufferDays) || 0;
+
+  // Per-item average daily consumption, computed from the activity log
+  // over the last CONSUMPTION_WINDOW_DAYS. Only "consumed" events count;
+  // restock/manual entries are ignored. Items with no consumption have
+  // avgDaily = 0 (we'll fall back to the static low threshold for them).
+  const consumption = useMemo(() => {
+    const cutoff = Date.now() - CONSUMPTION_WINDOW_DAYS * 86400000;
+    const totals = {};
+    let firstSeen = {};
+    for (const e of groceryActivity) {
+      if (e.ts < cutoff) continue;
+      if (e.reason !== "consumed") continue;
+      if (!totals[e.key]) {
+        totals[e.key] = 0;
+        firstSeen[e.key] = e.ts;
+      }
+      totals[e.key] += -e.delta; // delta is negative for consumed
+      if (e.ts < firstSeen[e.key]) firstSeen[e.key] = e.ts;
+    }
+    const out = {};
+    for (const k in totals) {
+      // Days observed: from earliest event to now, capped to window length.
+      // Floor at 1 day so a single big purchase doesn't divide by 0.
+      const daysObserved = Math.max(
+        1,
+        Math.min(
+          CONSUMPTION_WINDOW_DAYS,
+          Math.ceil((Date.now() - firstSeen[k]) / 86400000),
+        ),
+      );
+      out[k] = totals[k] / daysObserved;
+    }
+    return out;
+  }, [groceryActivity]);
+
+  // Forecast for each grocery item: avg daily, days remaining, urgency.
+  const forecasts = useMemo(() => {
+    return grocery.map((it) => {
+      const avgDaily = consumption[it.key] || 0;
+      const daysLeft = avgDaily > 0 ? it.qty / avgDaily : Infinity;
+      const belowThreshold = it.qty <= it.lowThreshold;
+      // Auto-shopping triggers when stock will run out within the buffer window
+      // OR static threshold is hit.
+      const needsBuffer = avgDaily > 0 && daysLeft <= bufferDays;
+      const inAutoShopping = belowThreshold || needsBuffer;
+      return { item: it, avgDaily, daysLeft, belowThreshold, needsBuffer, inAutoShopping };
+    });
+  }, [grocery, consumption, bufferDays]);
+
+  const autoShopping = forecasts.filter((f) => f.inAutoShopping);
+  const lowStock = grocery.filter((it) => it.qty <= it.lowThreshold);
 
   const grouped = useMemo(() => {
     const out = {};
@@ -46,8 +107,6 @@ export function Grocery() {
     }
     return out;
   }, [grocery]);
-
-  const lowStock = grocery.filter((it) => it.qty <= it.lowThreshold);
 
   return (
     <>
@@ -206,41 +265,100 @@ export function Grocery() {
           </div>
         ) : view === "shopping" ? (
           <div>
-            {lowStock.length === 0 ? (
+            {/* Buffer-days setting */}
+            <div className="border-2 border-ink p-3 mb-4 bg-ink/5 flex items-center gap-3 flex-wrap">
+              <Settings size={16} className="text-ink-muted shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted">
+                  Restock alert
+                </div>
+                <div className="font-body text-sm">
+                  Surface items projected to run out within{" "}
+                  <input
+                    type="number"
+                    min="0"
+                    max="30"
+                    value={bufferDays}
+                    onChange={(e) =>
+                      updateProfile({
+                        groceryBufferDays: Math.max(0, Number(e.target.value) || 0),
+                      })
+                    }
+                    className="w-14 mx-1 border-2 border-ink bg-paper px-2 py-1 font-display text-base text-center"
+                  />
+                  day{bufferDays === 1 ? "" : "s"}, based on the last {CONSUMPTION_WINDOW_DAYS}-day usage. Items below the static threshold also appear regardless of usage.
+                </div>
+              </div>
+            </div>
+
+            {autoShopping.length === 0 ? (
               <p className="font-body italic text-ink-muted">
-                Nothing below threshold — pantry's good.
+                Nothing predicted to run out within {bufferDays} day
+                {bufferDays === 1 ? "" : "s"} — pantry's good.
               </p>
             ) : (
               <ul className="divide-y divide-ink/30 border-y border-ink/30">
-                {lowStock.map((it) => {
-                  // Perishables top up to lowThreshold (one fresh packet's
-                  // worth) so we never carry more than ~maxDays of stock.
-                  // Non-perishables top up to 2× threshold for headroom.
-                  const need = it.perishable
-                    ? Math.max(0, it.lowThreshold - it.qty)
-                    : Math.max(0, it.lowThreshold * 2 - it.qty);
-                  const packets = Math.ceil(need / Math.max(1, it.packetSize));
-                  return (
-                    <li key={it.key} className="py-2 flex items-center gap-3">
-                      <span className="text-2xl">{it.icon}</span>
-                      <div className="flex-1">
-                        <div className="font-body text-base flex items-center gap-2 flex-wrap">
-                          {it.name}
-                          {it.perishable && (
-                            <Chip color="#c44827">Perishable · {it.maxDays || 7}d</Chip>
-                          )}
+                {autoShopping
+                  .slice()
+                  .sort((a, b) => a.daysLeft - b.daysLeft)
+                  .map((f) => {
+                    const it = f.item;
+                    // Perishables top up to lowThreshold (one fresh packet's
+                    // worth) so we never carry more than ~maxDays of stock.
+                    // Non-perishables top up to cover (bufferDays + 7) of usage
+                    // when we have a daily-rate, else fall back to 2× threshold.
+                    let need;
+                    if (it.perishable) {
+                      need = Math.max(0, it.lowThreshold - it.qty);
+                    } else if (f.avgDaily > 0) {
+                      const targetQty = f.avgDaily * (bufferDays + 7);
+                      need = Math.max(0, targetQty - it.qty);
+                    } else {
+                      need = Math.max(0, it.lowThreshold * 2 - it.qty);
+                    }
+                    const packets = Math.ceil(need / Math.max(1, it.packetSize));
+                    const daysLeftDisplay = isFinite(f.daysLeft)
+                      ? f.daysLeft < 1
+                        ? "<1 day"
+                        : `${Math.round(f.daysLeft)} day${Math.round(f.daysLeft) === 1 ? "" : "s"}`
+                      : "—";
+                    const reasonChip =
+                      f.needsBuffer && f.belowThreshold
+                        ? "Below threshold + ending soon"
+                        : f.needsBuffer
+                          ? `Out in ${daysLeftDisplay}`
+                          : "Below threshold";
+                    return (
+                      <li key={it.key} className="py-2 flex items-center gap-3 flex-wrap">
+                        <span className="text-2xl">{it.icon}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-body text-base flex items-center gap-2 flex-wrap">
+                            {it.name}
+                            <Chip color="#c44827">{reasonChip}</Chip>
+                            {it.perishable && (
+                              <Chip color="#c44827">Perishable · {it.maxDays || 7}d</Chip>
+                            )}
+                          </div>
+                          <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted">
+                            Have {Math.round(it.qty)}{it.unit}
+                            {f.avgDaily > 0 && (
+                              <>
+                                {" "}
+                                · uses {f.avgDaily.toFixed(1)}{it.unit}/day · runs out in{" "}
+                                {daysLeftDisplay}
+                              </>
+                            )}
+                            {" · "}Buy {packets} packet{packets === 1 ? "" : "s"} ({it.packetSize}
+                            {it.unit} each)
+                            {it.perishable && " · top up only"}
+                          </div>
                         </div>
-                        <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted">
-                          Have {it.qty}{it.unit} · Buy {packets} packet{packets === 1 ? "" : "s"} ({it.packetSize}{it.unit} each)
-                          {it.perishable && " · top up only"}
-                        </div>
-                      </div>
-                      <Button variant="primary" size="sm" onClick={() => restockGrocery(it.key)}>
-                        Bought
-                      </Button>
-                    </li>
-                  );
-                })}
+                        <Button variant="primary" size="sm" onClick={() => restockGrocery(it.key)}>
+                          Bought
+                        </Button>
+                      </li>
+                    );
+                  })}
               </ul>
             )}
           </div>
