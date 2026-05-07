@@ -11,6 +11,7 @@ const TAB_GROUPS = [
       { id: "build", label: "Build" },
       { id: "plan", label: "Plan" },
       { id: "week", label: "Week" },
+      { id: "foods", label: "Foods" },
     ],
   },
   {
@@ -27,7 +28,11 @@ const TAB_GROUPS = [
   },
   {
     label: "You",
-    tabs: [{ id: "profile", label: "Profile" }],
+    tabs: [
+      { id: "body", label: "Body" },
+      { id: "meds", label: "Meds" },
+      { id: "profile", label: "Profile" },
+    ],
   },
 ];
 

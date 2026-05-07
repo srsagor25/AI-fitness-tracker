@@ -4,7 +4,16 @@ import { Button } from "../components/ui/Button.jsx";
 import { Chip, ProgressBar } from "../components/ui/Field.jsx";
 import { bmr, tdee } from "../lib/calories.js";
 import { formatMMSS, DAYS_LONG, dayOfWeek } from "../lib/time.js";
-import { Dumbbell, Coffee, Footprints, Flame } from "lucide-react";
+import { Dumbbell, Coffee, Footprints, Flame, Droplet, Flame as FireIcon, Timer, Clock } from "lucide-react";
+
+function fmtHM(ms) {
+  if (ms == null || ms < 0) return "—";
+  const totalMin = Math.floor(ms / 60000);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (h > 0) return `${h}h ${String(m).padStart(2, "0")}m`;
+  return `${m}m`;
+}
 
 export function Dashboard({ setTab }) {
   const {
@@ -21,7 +30,10 @@ export function Dashboard({ setTab }) {
     cheats,
     coffee,
     steps,
+    water,
     dayType,
+    streak,
+    ifStatus,
   } = useApp();
 
   const remaining = dailyTargetKcal - dayTotals.kcal;
@@ -89,6 +101,70 @@ export function Dashboard({ setTab }) {
           <ProgressBar value={dayTotals.kcal} max={dailyTargetKcal} />
         </div>
       </Card>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="border-2 border-ink p-3 md:p-4">
+          <div className="flex items-center gap-2 mb-1">
+            <FireIcon size={14} className="text-accent" />
+            <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted">
+              Logging streak
+            </span>
+          </div>
+          <div className="font-display text-4xl font-black leading-none">
+            {streak}
+            <span className="font-mono text-xs uppercase tracking-widest ml-1 text-ink-muted">
+              day{streak === 1 ? "" : "s"}
+            </span>
+          </div>
+          <p className="font-body text-sm italic text-ink-muted mt-1">
+            {streak === 0
+              ? "Log a meal today to start your streak."
+              : streak === 1
+                ? "First day — keep it going."
+                : `Consistent for ${streak} days running.`}
+          </p>
+        </div>
+
+        <div className="border-2 border-ink p-3 md:p-4 md:col-span-2">
+          <div className="flex items-center gap-2 mb-1">
+            <Timer size={14} className="text-ink-muted" />
+            <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted">
+              Eating window {profile.windowStart && profile.windowEnd ? `(${profile.windowStart} – ${profile.windowEnd})` : ""}
+            </span>
+          </div>
+          {ifStatus ? (
+            <>
+              <div className="flex items-baseline gap-2 flex-wrap">
+                <span
+                  className="font-display text-3xl md:text-4xl font-black leading-none"
+                  style={{ color: ifStatus.state === "open" ? "#4a6b3e" : "#c44827" }}
+                >
+                  {fmtHM(ifStatus.msLeft)}
+                </span>
+                <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted">
+                  {ifStatus.nextLabel}
+                </span>
+                <Chip color={ifStatus.state === "open" ? "#4a6b3e" : "#c44827"}>
+                  {ifStatus.state === "open" ? "Window open" : "Fasting"}
+                </Chip>
+              </div>
+              <div className="h-1 bg-ink/15 mt-3">
+                <div
+                  className="h-1 transition-all"
+                  style={{
+                    width: `${Math.max(0, Math.min(100, 100 - (ifStatus.msLeft / Math.max(1, ifStatus.windowMs)) * 100))}%`,
+                    backgroundColor: ifStatus.state === "open" ? "#4a6b3e" : "#c44827",
+                  }}
+                />
+              </div>
+            </>
+          ) : (
+            <p className="font-body italic text-ink-muted">
+              Set your eating window on the Profile tab to see a live timer here.
+            </p>
+          )}
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card>
@@ -177,8 +253,8 @@ export function Dashboard({ setTab }) {
       </div>
 
       <Card>
-        <CardHeader kicker="Habits" title="Daily Tracking" />
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        <CardHeader kicker="Healthy Habits" title="Daily Tracking" />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div className="border-2 border-ink p-3">
             <div className="flex items-center gap-2 mb-1">
               <Coffee size={14} />
@@ -190,6 +266,20 @@ export function Dashboard({ setTab }) {
               {coffeeHad}
               <span className="font-mono text-xs text-ink-muted ml-1">
                 / {profile.coffeeSchedule.length || "—"}
+              </span>
+            </div>
+          </div>
+          <div className="border-2 border-ink p-3">
+            <div className="flex items-center gap-2 mb-1">
+              <Droplet size={14} className="text-sky" />
+              <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted">
+                Water
+              </span>
+            </div>
+            <div className="font-display text-2xl font-black">
+              {water}
+              <span className="font-mono text-xs text-ink-muted ml-1">
+                / {profile.waterTarget || 8} cups
               </span>
             </div>
           </div>

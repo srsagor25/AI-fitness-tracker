@@ -4,7 +4,7 @@ import { Card, CardHeader, Stat } from "../components/ui/Card.jsx";
 import { Button, IconButton } from "../components/ui/Button.jsx";
 import { Field, TextInput, Select, Chip, ProgressBar } from "../components/ui/Field.jsx";
 import { Modal } from "../components/ui/Modal.jsx";
-import { calcMeal, FOODS } from "../store/profiles.js";
+import { FOODS } from "../store/profiles.js";
 import { analyzeFoodPhoto, suggestEatOut, fileToResizedBase64 } from "../lib/aiVision.js";
 import {
   Plus,
@@ -16,6 +16,8 @@ import {
   AlertTriangle,
   Loader2,
   Lightbulb,
+  Droplet,
+  Minus,
 } from "lucide-react";
 
 const SLOTS = [
@@ -38,6 +40,9 @@ export function Diet() {
     steps,
     setSteps,
     stepAdjustKcal,
+    water,
+    incrementWater,
+    decrementWater,
     dayTypeId,
     setDayTypeId,
     dayType,
@@ -48,6 +53,7 @@ export function Diet() {
     showSnack,
     shouldSuggestLightDinner,
     clearDay,
+    calc,
   } = useApp();
 
   const [presetModal, setPresetModal] = useState(null);
@@ -287,11 +293,58 @@ export function Diet() {
         </Card>
       )}
 
+      {/* Water tracker */}
+      <Card>
+        <CardHeader
+          kicker="Hydration"
+          title={`${water} / ${profile.waterTarget || 8} cups`}
+          subtitle={
+            water >= (profile.waterTarget || 8)
+              ? "Hydration goal hit — nice."
+              : `${(profile.waterTarget || 8) - water} cup${(profile.waterTarget || 8) - water === 1 ? "" : "s"} to go.`
+          }
+          right={
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={decrementWater}>
+                <Minus size={12} /> Cup
+              </Button>
+              <Button variant="primary" size="sm" onClick={incrementWater}>
+                <Plus size={12} /> Cup
+              </Button>
+            </div>
+          }
+        />
+        <div className="flex flex-wrap gap-1.5">
+          {Array.from({ length: profile.waterTarget || 8 }).map((_, i) => {
+            const filled = i < water;
+            return (
+              <button
+                key={i}
+                onClick={() => (filled ? decrementWater() : incrementWater())}
+                aria-label={filled ? "Remove cup" : "Add cup"}
+                className="w-10 h-10 border-2 border-ink flex items-center justify-center transition-colors hover:bg-ink/10"
+                style={{
+                  backgroundColor: filled ? "#3b6aa3" : "transparent",
+                  color: filled ? "#f4ede0" : "#3b6aa3",
+                }}
+              >
+                <Droplet size={18} fill={filled ? "#f4ede0" : "none"} />
+              </button>
+            );
+          })}
+          {water > (profile.waterTarget || 8) && (
+            <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-good self-center ml-2">
+              +{water - (profile.waterTarget || 8)} bonus
+            </span>
+          )}
+        </div>
+      </Card>
+
       {/* Meal slots */}
       {SLOTS.map((slot) => {
         const items = meals[slot.id];
-        const totalKcal = items.reduce((s, m) => s + calcMeal(m.items).kcal, 0);
-        const totalProtein = items.reduce((s, m) => s + calcMeal(m.items).protein, 0);
+        const totalKcal = items.reduce((s, m) => s + calc(m.items).kcal, 0);
+        const totalProtein = items.reduce((s, m) => s + calc(m.items).protein, 0);
 
         const presetMap =
           slot.id === "lunch"
@@ -334,7 +387,7 @@ export function Diet() {
             ) : (
               <ul className="divide-y divide-ink/30 border-y border-ink/30">
                 {items.map((m) => {
-                  const t = calcMeal(m.items);
+                  const t = calc(m.items);
                   return (
                     <li key={m.id} className="py-2 flex items-start gap-3">
                       <span className="text-2xl">{m.icon || "🍽️"}</span>
@@ -428,11 +481,12 @@ function ItemList({ items }) {
 }
 
 function PresetPickerModal({ slot, presets, onClose, onPick }) {
+  const { calc } = useApp();
   return (
     <Modal open onClose={onClose} title={`Pick a ${slot} preset`}>
       <div className="space-y-2">
         {Object.values(presets).map((p) => {
-          const t = calcMeal(p.items);
+          const t = calc(p.items);
           return (
             <button
               key={p.key}
@@ -463,6 +517,7 @@ function PresetPickerModal({ slot, presets, onClose, onPick }) {
 }
 
 function CustomMealModal({ slot, onClose, onSave }) {
+  const { calc } = useApp();
   const [name, setName] = useState("");
   const [items, setItems] = useState([{ food: Object.keys(FOODS)[0], amount: 100 }]);
   const [direct, setDirect] = useState(false);
@@ -564,7 +619,7 @@ function CustomMealModal({ slot, onClose, onSave }) {
           <div className="space-y-2">
             {items.map((it, i) => {
               const f = FOODS[it.food];
-              const t = calcMeal([it]);
+              const t = calc([it]);
               return (
                 <div key={i} className="flex gap-2 items-end">
                   <Select
@@ -600,7 +655,7 @@ function CustomMealModal({ slot, onClose, onSave }) {
               <Plus size={12} /> Add ingredient
             </Button>
             <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted text-right">
-              Total: {Math.round(calcMeal(items).kcal)} kcal · {Math.round(calcMeal(items).protein)}g protein
+              Total: {Math.round(calc(items).kcal)} kcal · {Math.round(calc(items).protein)}g protein
             </div>
           </div>
         )}

@@ -3,6 +3,8 @@ import { useApp } from "../store/AppContext.jsx";
 import { Card, CardHeader, Stat } from "../components/ui/Card.jsx";
 import { Chip, ProgressBar } from "../components/ui/Field.jsx";
 import { calcMeal } from "../store/profiles.js";
+// Note: Week reads past days directly from localStorage. We pass customFoods
+// from context into calcMeal so user-edited macros apply retroactively.
 import { load } from "../store/storage.js";
 import { todayKey, DAYS_SHORT, fromKey } from "../lib/time.js";
 import { estimateWorkoutKcal } from "../lib/calories.js";
@@ -19,7 +21,7 @@ function lastNDays(n) {
 }
 
 export function Week() {
-  const { profile, history } = useApp();
+  const { profile, history, customFoods } = useApp();
   const days = lastNDays(7);
 
   // Pull each day's data from storage
@@ -36,7 +38,7 @@ export function Week() {
       let kcal = 0;
       let protein = 0;
       for (const m of allMeals) {
-        const t = calcMeal(m.items);
+        const t = calcMeal(m.items, customFoods);
         kcal += t.kcal;
         protein += t.protein;
       }
@@ -66,7 +68,7 @@ export function Week() {
         steps,
       };
     });
-  }, [days, profile, history]);
+  }, [days, profile, history, customFoods]);
 
   const totals = useMemo(() => {
     const out = {

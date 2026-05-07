@@ -35,7 +35,21 @@ export function AppProvider({ children }) {
   const [cheats, setCheats] = useState(() => load(`cheats:${dateKey}`, []));
   const [coffee, setCoffee] = useState(() => load(`coffee:${dateKey}`, []));
   const [steps, setSteps] = useState(() => load(`steps:${dateKey}`, 0));
+  const [water, setWater] = useState(() => load(`water:${dateKey}`, 0));
   const [dayTypeId, setDayTypeId] = useState(() => load(`dayType:${dateKey}`, profile.dayTypes[0]?.id || "rest"));
+  const [medsTakenToday, setMedsTakenToday] = useState(() => load(`meds:taken:${dateKey}`, []));
+
+  // ----- Cross-day logs -----
+  const [weightLog, setWeightLog] = useState(() => load("weight:log", []));
+  const [meds, setMeds] = useState(() => load("meds:list", []));
+  const [customFoods, setCustomFoods] = useState(() => load("foods:custom", {}));
+
+  // ----- Live clock for IF timer -----
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 30 * 1000); // 30s
+    return () => clearInterval(t);
+  }, []);
 
   // ----- Workout state -----
   const [customPrograms, setCustomPrograms] = useState(() => load("workout:custom-programs", []));
@@ -98,7 +112,12 @@ export function AppProvider({ children }) {
   useEffect(() => save(`cheats:${dateKey}`, cheats), [cheats, dateKey]);
   useEffect(() => save(`coffee:${dateKey}`, coffee), [coffee, dateKey]);
   useEffect(() => save(`steps:${dateKey}`, steps), [steps, dateKey]);
+  useEffect(() => save(`water:${dateKey}`, water), [water, dateKey]);
   useEffect(() => save(`dayType:${dateKey}`, dayTypeId), [dayTypeId, dateKey]);
+  useEffect(() => save(`meds:taken:${dateKey}`, medsTakenToday), [medsTakenToday, dateKey]);
+  useEffect(() => save("weight:log", weightLog), [weightLog]);
+  useEffect(() => save("meds:list", meds), [meds]);
+  useEffect(() => save("foods:custom", customFoods), [customFoods]);
   useEffect(() => save("workout:custom-programs", customPrograms), [customPrograms]);
   useEffect(() => save("workout:active-program", activeProgramId), [activeProgramId]);
   useEffect(() => save("workout:weeks", weeks), [weeks]);
@@ -176,26 +195,102 @@ export function AppProvider({ children }) {
     );
   }, [history, profile.stats?.weightKg, dateKey]);
 
-  // ----- Diet totals -----
-  const mealTotals = useCallback((items) => calcMeal(items), []);
+  // ----- Diet totals (using customFoods overrides) -----
+  const calc = useCallback((items) => calcMeal(items, customFoods), [customFoods]);
 
   const dayTotals = useMemo(() => {
     const out = { kcal: 0, protein: 0, fat: 0, carbs: 0 };
     const allMeals = [...meals.lunch, ...meals.shake, ...meals.dinner, ...meals.snack, ...cheats];
     for (const m of allMeals) {
-      const t = calcMeal(m.items);
+      const t = calcMeal(m.items, customFoods);
       out.kcal += t.kcal;
       out.protein += t.protein;
       out.fat += t.fat || 0;
       out.carbs += t.carbs || 0;
     }
     return out;
-  }, [meals, cheats]);
+  }, [meals, cheats, customFoods]);
 
   const cheatSurplus = useMemo(() => {
     const baseline = profile.cheatBaselineKcal || 1000;
-    return cheats.reduce((s, c) => s + Math.max(0, calcMeal(c.items).kcal - baseline), 0);
-  }, [cheats, profile.cheatBaselineKcal]);
+    return cheats.reduce(
+      (s, c) => s + Math.max(0, calcMeal(c.items, customFoods).kcal - baseline),
+      0,
+    );
+  }, [cheats, profile.cheatBaselineKcal, customFoods]);
+
+  // ----- Streak: count back from today, day counts if total kcal > 100 -----
+  const streak = useMemo(() => {
+    const todayCalc = (() => {
+      let kcal = 0;
+      for (const slot of SLOTS) {
+        for (const m of meals[slot] || []) kcal += calcMeal(m.items, customFoods).kcal;
+      }
+      for (const c of cheats) kcal += calcMeal(c.items, customFoods).kcal;
+      return kcal;
+    })();
+    let count = 0;
+    if (todayCalc > 100) count = 1;
+    else return 0;
+    const day = new Date();
+    day.setHours(0, 0, 0, 0);
+    for (let i = 1; i < 365; i++) {
+      const d = new Date(day);
+      d.setDate(d.getDate() - i);
+      const k = todayKey(d);
+      const m = load(`meals:${k}`, null);
+      const ch = load(`cheats:${k}`, null);
+      if (!m && !ch) break;
+      let kcal = 0;
+      if (m) {
+        for (const slot of SLOTS) {
+          for (const meal of m[slot] || []) kcal += calcMeal(meal.items, customFoods).kcal;
+        }
+      }
+      if (ch) {
+        for (const c of ch) kcal += calcMeal(c.items, customFoods).kcal;
+      }
+      if (kcal <= 100) break;
+      count++;
+    }
+    return count;
+  }, [meals, cheats, customFoods]);
+
+  // ----- IF timer status -----
+  const ifStatus = useMemo(() => {
+    const ws = profile.windowStart;
+    const we = profile.windowEnd;
+    if (!ws || !we) return null;
+    const [sh, sm] = ws.split(":").map(Number);
+    const [eh, em] = we.split(":").map(Number);
+    if (Number.isNaN(sh) || Number.isNaN(eh)) return null;
+    const nowDate = new Date(now);
+    const start = new Date(nowDate);
+    start.setHours(sh, sm || 0, 0, 0);
+    const end = new Date(nowDate);
+    end.setHours(eh, em || 0, 0, 0);
+    if (end <= start) end.setDate(end.getDate() + 1);
+    const windowMs = end - start;
+    if (nowDate >= start && nowDate < end) {
+      return {
+        state: "open",
+        msLeft: end - nowDate,
+        windowMs,
+        nextLabel: "until window closes",
+      };
+    }
+    let nextStart = start;
+    if (nowDate >= end) {
+      nextStart = new Date(start);
+      nextStart.setDate(nextStart.getDate() + 1);
+    }
+    return {
+      state: "closed",
+      msLeft: nextStart - nowDate,
+      windowMs,
+      nextLabel: "until window opens",
+    };
+  }, [profile.windowStart, profile.windowEnd, now]);
 
   // ----- Diet target = day-type target + step adjustment + workout kcal bonus -----
   const dailyTargetKcal = useMemo(
@@ -240,7 +335,82 @@ export function AppProvider({ children }) {
     setCheats([]);
     setCoffee(new Array(profile.coffeeSchedule.length).fill(false));
     setSteps(0);
+    setWater(0);
+    setMedsTakenToday([]);
     showSnack("Day cleared");
+  }
+
+  // ----- Water -----
+  function incrementWater() {
+    setWater((w) => w + 1);
+  }
+  function decrementWater() {
+    setWater((w) => Math.max(0, w - 1));
+  }
+
+  // ----- Weight log -----
+  function addWeightEntry(weightKg, note = "") {
+    const w = Number(weightKg);
+    if (!w) return;
+    setWeightLog((prev) => [
+      ...prev,
+      { id: uid("w"), date: Date.now(), weightKg: w, note: note.trim() },
+    ]);
+    // Mirror latest weight into the profile so calorie calcs stay accurate
+    setProfile((p) => ({ ...p, stats: { ...p.stats, weightKg: w } }));
+    showSnack(`Logged ${w} kg`);
+  }
+  function removeWeightEntry(id) {
+    setWeightLog((prev) => prev.filter((e) => e.id !== id));
+  }
+  const latestWeight = weightLog.length ? weightLog[weightLog.length - 1] : null;
+
+  // ----- Custom foods (carbs/fat editor) -----
+  function updateCustomFood(key, patch) {
+    setCustomFoods((prev) => ({ ...prev, [key]: { ...(prev[key] || {}), ...patch } }));
+  }
+  function resetCustomFood(key) {
+    setCustomFoods((prev) => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  }
+
+  // ----- Medications -----
+  function saveMedication(med) {
+    setMeds((prev) => {
+      const idx = prev.findIndex((m) => m.id === med.id);
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = med;
+        return next;
+      }
+      return [...prev, med];
+    });
+    showSnack(`Saved ${med.name}`);
+  }
+  function deleteMedication(id) {
+    setMeds((prev) => prev.filter((m) => m.id !== id));
+    setMedsTakenToday((prev) => prev.filter((d) => d.medId !== id));
+  }
+  function logDose(med, quantityOverride, note = "") {
+    const qty = Number(quantityOverride ?? med.defaultQuantity) || 1;
+    const entry = {
+      id: uid("dose"),
+      medId: med.id,
+      medName: med.name,
+      type: med.type,
+      quantity: qty,
+      unit: med.unit || "",
+      note,
+      takenAt: Date.now(),
+    };
+    setMedsTakenToday((prev) => [...prev, entry]);
+    showSnack(`Took ${qty} ${med.unit || ""} ${med.name}`.trim());
+  }
+  function unlogDose(doseId) {
+    setMedsTakenToday((prev) => prev.filter((d) => d.id !== doseId));
   }
 
   function toggleCoffee(idx) {
@@ -437,10 +607,15 @@ export function AppProvider({ children }) {
     cheats, addCheat, removeCheat, cheatSurplus,
     coffee, toggleCoffee,
     steps, setSteps, stepAdjustKcal,
+    water, setWater, incrementWater, decrementWater,
     dayTypeId, setDayTypeId, dayType,
     clearDay,
-    // totals
+    // totals + helpers
     dayTotals, dailyTargetKcal,
+    calc, // calcMeal pre-bound with customFoods
+    streak,
+    ifStatus,
+    now,
     // workout
     allPrograms, customPrograms, activeProgram, activeProgramId, setActiveProgramId,
     weeks, setProgramWeek, resetProgramWeek,
@@ -455,6 +630,13 @@ export function AppProvider({ children }) {
     manualShopping, addManualShopping, toggleManualShopping, removeManualShopping,
     // plan
     plan, setPlanForDate, clearPlan,
+    // body
+    weightLog, addWeightEntry, removeWeightEntry, latestWeight,
+    // foods overrides
+    customFoods, updateCustomFood, resetCustomFood,
+    // medications
+    meds, saveMedication, deleteMedication,
+    medsTakenToday, logDose, unlogDose,
     // misc
     showSnack, snackbar,
     shouldSuggestLightDinner,

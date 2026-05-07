@@ -78,8 +78,30 @@ export function Profile() {
           <Field label="Goal description">
             <TextInput value={profile.goal} onChange={(e) => update({ goal: e.target.value })} />
           </Field>
-          <Field label="Eating window">
+          <Field label="Eating window (label)">
             <TextInput value={profile.eatingWindow || ""} onChange={(e) => update({ eatingWindow: e.target.value })} placeholder="e.g. 1 PM – 9 PM (16:8)" />
+          </Field>
+          <Field label="Window start (HH:MM)">
+            <TextInput
+              type="time"
+              value={profile.windowStart || ""}
+              onChange={(e) => update({ windowStart: e.target.value })}
+            />
+          </Field>
+          <Field label="Window end (HH:MM)">
+            <TextInput
+              type="time"
+              value={profile.windowEnd || ""}
+              onChange={(e) => update({ windowEnd: e.target.value })}
+            />
+          </Field>
+          <Field label="Water target (cups/day)">
+            <TextInput
+              type="number"
+              min="0"
+              value={profile.waterTarget ?? 8}
+              onChange={(e) => update({ waterTarget: Number(e.target.value) || 0 })}
+            />
           </Field>
           <Field label="Public label">
             <TextInput value={profile.publicLabel} onChange={(e) => update({ publicLabel: e.target.value })} />

@@ -3,7 +3,7 @@ import { useApp } from "../store/AppContext.jsx";
 import { Card, CardHeader, Stat } from "../components/ui/Card.jsx";
 import { Button } from "../components/ui/Button.jsx";
 import { Select, Chip } from "../components/ui/Field.jsx";
-import { calcMeal, FOODS, ingredientDeltas } from "../store/profiles.js";
+import { FOODS, ingredientDeltas } from "../store/profiles.js";
 import { todayKey, fromKey, DAYS_SHORT } from "../lib/time.js";
 import { Calendar, ShoppingCart } from "lucide-react";
 
@@ -32,6 +32,7 @@ export function Plan() {
     clearPlan,
     grocery,
     addManualShopping,
+    calc,
   } = useApp();
   const [horizon, setHorizon] = useState(7);
 
@@ -77,7 +78,7 @@ export function Plan() {
         const preset = getPreset(slot.id, key);
         if (!preset) continue;
         mealCount++;
-        const t = calcMeal(preset.items);
+        const t = calc(preset.items);
         totalKcal += t.kcal;
         totalProtein += t.protein;
         const deltas = ingredientDeltas(preset.items);
@@ -220,7 +221,7 @@ export function Plan() {
                   const k = plan[dk]?.[s.id];
                   if (k) {
                     const p = getPreset(s.id, k);
-                    if (p) dayKcal += calcMeal(p.items).kcal;
+                    if (p) dayKcal += calc(p.items).kcal;
                   }
                 }
                 return (

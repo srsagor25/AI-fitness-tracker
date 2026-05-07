@@ -6,10 +6,13 @@ import { Cheat } from "./pages/Cheat.jsx";
 import { Build } from "./pages/Build.jsx";
 import { Plan } from "./pages/Plan.jsx";
 import { Week } from "./pages/Week.jsx";
+import { Foods } from "./pages/Foods.jsx";
 import { Workout } from "./pages/Workout.jsx";
 import { Programs } from "./pages/Programs.jsx";
 import { History } from "./pages/History.jsx";
 import { Grocery } from "./pages/Grocery.jsx";
+import { Body } from "./pages/Body.jsx";
+import { Meds } from "./pages/Meds.jsx";
 import { Profile } from "./pages/Profile.jsx";
 
 export default function App() {
@@ -22,10 +25,13 @@ export default function App() {
       {tab === "build" && <Build />}
       {tab === "plan" && <Plan />}
       {tab === "week" && <Week />}
+      {tab === "foods" && <Foods />}
       {tab === "workout" && <Workout />}
       {tab === "programs" && <Programs />}
       {tab === "history" && <History />}
       {tab === "grocery" && <Grocery />}
+      {tab === "body" && <Body />}
+      {tab === "meds" && <Meds />}
       {tab === "profile" && <Profile />}
     </Layout>
   );

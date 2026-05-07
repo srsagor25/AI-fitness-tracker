@@ -3,13 +3,13 @@ import { useApp } from "../store/AppContext.jsx";
 import { Card, CardHeader, Stat } from "../components/ui/Card.jsx";
 import { Button, IconButton } from "../components/ui/Button.jsx";
 import { Field, TextInput, Select, Chip } from "../components/ui/Field.jsx";
-import { calcMeal, FOODS } from "../store/profiles.js";
+import { FOODS } from "../store/profiles.js";
 import { Plus, Trash2, Save } from "lucide-react";
 
 const SLOTS = ["lunch", "shake", "dinner", "snack"];
 
 export function Build() {
-  const { addMealToSlot, dayTotals, dailyTargetKcal, profile } = useApp();
+  const { addMealToSlot, dayTotals, dailyTargetKcal, profile, calc } = useApp();
 
   const [name, setName] = useState("");
   const [icon, setIcon] = useState("✏️");
@@ -38,7 +38,7 @@ export function Build() {
     setIcon("✏️");
   }
 
-  const totals = useMemo(() => calcMeal(items), [items]);
+  const totals = useMemo(() => calc(items), [items, calc]);
   const remaining = dailyTargetKcal - dayTotals.kcal;
   const wouldBe = dayTotals.kcal + totals.kcal;
   const wouldExceed = wouldBe > dailyTargetKcal;
@@ -117,7 +117,7 @@ export function Build() {
           <ul className="divide-y divide-ink/30 border-y border-ink/30 mb-3">
             {items.map((it, i) => {
               const f = FOODS[it.food];
-              const t = calcMeal([it]);
+              const t = calc([it]);
               return (
                 <li key={i} className="py-2 flex items-center gap-2">
                   <div className="flex-1 min-w-0">

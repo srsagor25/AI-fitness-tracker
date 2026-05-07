@@ -143,6 +143,9 @@ export const SAIDUR_PROFILE = {
   goalKey: "maintain",
   activity: "active",
   eatingWindow: "1 PM – 9 PM (16:8)",
+  windowStart: "13:00",
+  windowEnd: "21:00",
+  waterTarget: 8,
   workoutAppUrl: "https://workout-cyan-tau.vercel.app/",
   proteinTarget: 180,
   cheatBaselineKcal: 1019,
@@ -174,6 +177,9 @@ export const BLANK_PROFILE = {
   goalKey: "maintain",
   activity: "moderate",
   eatingWindow: "",
+  windowStart: "",
+  windowEnd: "",
+  waterTarget: 8,
   workoutAppUrl: "",
   proteinTarget: 150,
   cheatBaselineKcal: 1000,
@@ -208,22 +214,29 @@ export function cloneTemplate(template) {
 }
 
 // Compute a meal's macros from its items array (food key + amount).
-export function calcMeal(items) {
-  const out = { kcal: 0, protein: 0 };
+// `overrides` is a map of foodKey → { kcal, protein, fat, carbs } user edits
+// (from `foods:custom` localStorage). Fields not present in the override
+// fall back to the base FOODS entry. Direct items embed their own macros.
+export function calcMeal(items, overrides = {}) {
+  const out = { kcal: 0, protein: 0, fat: 0, carbs: 0 };
   if (!items) return out;
   for (const it of items) {
     if (it.direct) {
-      out.kcal += (Number(it.kcal) || 0) * (Number(it.amount) || 1);
-      out.protein += (Number(it.protein) || 0) * (Number(it.amount) || 1);
-      out.fat = (out.fat || 0) + (Number(it.fat) || 0) * (Number(it.amount) || 1);
-      out.carbs = (out.carbs || 0) + (Number(it.carbs) || 0) * (Number(it.amount) || 1);
+      const a = Number(it.amount) || 1;
+      out.kcal += (Number(it.kcal) || 0) * a;
+      out.protein += (Number(it.protein) || 0) * a;
+      out.fat += (Number(it.fat) || 0) * a;
+      out.carbs += (Number(it.carbs) || 0) * a;
       continue;
     }
-    const f = FOODS[it.food];
-    if (!f) continue;
+    const base = FOODS[it.food];
+    if (!base) continue;
+    const ovr = overrides[it.food] || {};
     const amt = Number(it.amount) || 0;
-    out.kcal += f.kcal * amt;
-    out.protein += f.protein * amt;
+    out.kcal += (Number(ovr.kcal ?? base.kcal) || 0) * amt;
+    out.protein += (Number(ovr.protein ?? base.protein) || 0) * amt;
+    out.fat += (Number(ovr.fat ?? base.fat ?? 0)) * amt;
+    out.carbs += (Number(ovr.carbs ?? base.carbs ?? 0)) * amt;
   }
   return out;
 }

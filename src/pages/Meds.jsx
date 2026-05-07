@@ -1,0 +1,497 @@
+import { useEffect, useMemo, useState } from "react";
+import { useApp } from "../store/AppContext.jsx";
+import { Card, CardHeader, Stat } from "../components/ui/Card.jsx";
+import { Button, IconButton } from "../components/ui/Button.jsx";
+import { Field, TextInput, Select, Chip } from "../components/ui/Field.jsx";
+import { Modal } from "../components/ui/Modal.jsx";
+import {
+  Pill,
+  Syringe,
+  Droplet,
+  Plus,
+  Trash2,
+  Edit3,
+  Bell,
+  BellRing,
+  BellOff,
+  Check,
+  Clock,
+} from "lucide-react";
+
+const MED_TYPES = [
+  { id: "tablet", label: "Tablet", icon: "💊", iconCmp: Pill, defaultUnit: "tablets" },
+  { id: "capsule", label: "Capsule", icon: "💊", iconCmp: Pill, defaultUnit: "capsules" },
+  { id: "drop", label: "Drop", icon: "💧", iconCmp: Droplet, defaultUnit: "drops" },
+  { id: "syrup", label: "Syrup / Liquid", icon: "🧴", iconCmp: Droplet, defaultUnit: "ml" },
+  { id: "vaccine", label: "Vaccine / Injection", icon: "💉", iconCmp: Syringe, defaultUnit: "dose" },
+  { id: "topical", label: "Topical / Cream", icon: "🩹", iconCmp: Pill, defaultUnit: "applications" },
+  { id: "other", label: "Other", icon: "🩺", iconCmp: Pill, defaultUnit: "units" },
+];
+
+function uid() {
+  return "med_" + Math.random().toString(36).slice(2, 9);
+}
+
+function todayHM(d = new Date()) {
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+function minutesUntil(hhmm) {
+  if (!hhmm) return Infinity;
+  const [h, m] = hhmm.split(":").map(Number);
+  const now = new Date();
+  const target = new Date(now);
+  target.setHours(h, m, 0, 0);
+  if (target < now) target.setDate(target.getDate() + 1);
+  return Math.round((target - now) / 60000);
+}
+
+export function Meds() {
+  const { meds, saveMedication, deleteMedication, medsTakenToday, logDose, unlogDose } =
+    useApp();
+  const [editing, setEditing] = useState(null);
+  const [doseModal, setDoseModal] = useState(null);
+  const [notifPermission, setNotifPermission] = useState(
+    typeof Notification !== "undefined" ? Notification.permission : "unsupported",
+  );
+
+  // Reminder ticker — checks every 30s if any reminder time matches now (±1m)
+  // and fires a browser notification, deduped by med+time+date.
+  useEffect(() => {
+    if (notifPermission !== "granted") return;
+    const fired = new Set();
+    function check() {
+      const now = new Date();
+      const hm = todayHM(now);
+      const day = now.toISOString().slice(0, 10);
+      for (const m of meds) {
+        for (const t of m.reminderTimes || []) {
+          const key = `${day}|${m.id}|${t}`;
+          if (hm === t && !fired.has(key)) {
+            fired.add(key);
+            try {
+              new Notification(`💊 ${m.name}`, {
+                body: `Take ${m.defaultQuantity || 1} ${m.unit || "dose"}${m.notes ? ` — ${m.notes}` : ""}`,
+                tag: key,
+              });
+            } catch {}
+          }
+        }
+      }
+    }
+    check();
+    const t = setInterval(check, 30 * 1000);
+    return () => clearInterval(t);
+  }, [meds, notifPermission]);
+
+  async function requestPerm() {
+    if (typeof Notification === "undefined") return;
+    const p = await Notification.requestPermission();
+    setNotifPermission(p);
+  }
+
+  function startCreate() {
+    setEditing({
+      id: uid(),
+      name: "",
+      type: "tablet",
+      defaultQuantity: 1,
+      unit: "tablets",
+      notes: "",
+      reminderTimes: [],
+    });
+  }
+
+  const upcomingReminders = useMemo(() => {
+    const out = [];
+    for (const m of meds) {
+      for (const t of m.reminderTimes || []) {
+        out.push({ medId: m.id, medName: m.name, time: t, mins: minutesUntil(t) });
+      }
+    }
+    return out.sort((a, b) => a.mins - b.mins);
+  }, [meds]);
+
+  return (
+    <>
+      <Card>
+        <CardHeader
+          kicker="Medications"
+          title="Pill, Drop, Vaccine"
+          subtitle={`${meds.length} medication${meds.length === 1 ? "" : "s"} · ${medsTakenToday.length} dose${medsTakenToday.length === 1 ? "" : "s"} taken today`}
+          right={
+            <div className="flex flex-wrap gap-2">
+              {notifPermission === "default" && (
+                <Button variant="outline" size="sm" onClick={requestPerm}>
+                  <Bell size={12} /> Enable Reminders
+                </Button>
+              )}
+              {notifPermission === "granted" && (
+                <Chip color="#4a6b3e">
+                  <BellRing size={10} className="inline mr-1" /> Reminders on
+                </Chip>
+              )}
+              {notifPermission === "denied" && (
+                <Chip color="#c44827">
+                  <BellOff size={10} className="inline mr-1" /> Notifications blocked
+                </Chip>
+              )}
+              <Button variant="primary" size="sm" onClick={startCreate}>
+                <Plus size={12} /> Add Medication
+              </Button>
+            </div>
+          }
+        />
+
+        {notifPermission === "denied" && (
+          <p className="font-body text-sm italic text-ink-muted mb-3">
+            Browser notifications are blocked. Enable them in site settings to get
+            reminders. The reminder times are still listed below.
+          </p>
+        )}
+
+        {meds.length === 0 ? (
+          <p className="font-body italic text-ink-muted">
+            No medications added yet. Click <strong>Add Medication</strong> to create one.
+          </p>
+        ) : (
+          <ul className="space-y-3">
+            {meds.map((m) => (
+              <MedRow
+                key={m.id}
+                med={m}
+                takenToday={medsTakenToday.filter((d) => d.medId === m.id)}
+                onTake={() => setDoseModal(m)}
+                onEdit={() => setEditing({ ...m })}
+                onDelete={() => {
+                  if (confirm(`Remove ${m.name}?`)) deleteMedication(m.id);
+                }}
+              />
+            ))}
+          </ul>
+        )}
+      </Card>
+
+      {upcomingReminders.length > 0 && (
+        <Card>
+          <CardHeader kicker="Schedule" title="Upcoming Reminders" />
+          <ul className="divide-y divide-ink/30 border-y border-ink/30">
+            {upcomingReminders.slice(0, 8).map((r, i) => (
+              <li key={i} className="py-2 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Clock size={14} className="text-ink-muted" />
+                  <span className="font-body">{r.medName}</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="font-display text-lg font-bold">{r.time}</span>
+                  <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted w-20 text-right">
+                    in {r.mins < 60 ? `${r.mins}m` : `${Math.floor(r.mins / 60)}h ${r.mins % 60}m`}
+                  </span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
+      <Card>
+        <CardHeader
+          kicker="Today's doses"
+          title={`${medsTakenToday.length} taken`}
+          right={
+            medsTakenToday.length > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  if (confirm("Clear today's dose log?")) {
+                    medsTakenToday.forEach((d) => unlogDose(d.id));
+                  }
+                }}
+              >
+                Clear today
+              </Button>
+            )
+          }
+        />
+        {medsTakenToday.length === 0 ? (
+          <p className="font-body italic text-ink-muted">No doses logged yet today.</p>
+        ) : (
+          <ul className="divide-y divide-ink/30 border-y border-ink/30">
+            {[...medsTakenToday]
+              .sort((a, b) => b.takenAt - a.takenAt)
+              .map((d) => {
+                const tDef = MED_TYPES.find((t) => t.id === d.type);
+                return (
+                  <li key={d.id} className="py-2 flex items-center gap-3">
+                    <span className="text-2xl">{tDef?.icon || "💊"}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-body text-base">
+                        {d.medName}{" "}
+                        <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted ml-1">
+                          {d.quantity} {d.unit}
+                        </span>
+                      </div>
+                      <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted">
+                        {new Date(d.takenAt).toLocaleTimeString("en-US", {
+                          hour: "numeric",
+                          minute: "2-digit",
+                        })}
+                        {d.note && ` · ${d.note}`}
+                      </div>
+                    </div>
+                    <IconButton onClick={() => unlogDose(d.id)} aria-label="Remove dose">
+                      <Trash2 size={14} />
+                    </IconButton>
+                  </li>
+                );
+              })}
+          </ul>
+        )}
+      </Card>
+
+      {editing && (
+        <MedEditorModal
+          med={editing}
+          onClose={() => setEditing(null)}
+          onSave={(m) => {
+            saveMedication(m);
+            setEditing(null);
+          }}
+        />
+      )}
+      {doseModal && (
+        <DoseModal
+          med={doseModal}
+          onClose={() => setDoseModal(null)}
+          onLog={(qty, note) => {
+            logDose(doseModal, qty, note);
+            setDoseModal(null);
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+function MedRow({ med, takenToday, onTake, onEdit, onDelete }) {
+  const tDef = MED_TYPES.find((t) => t.id === med.type) || MED_TYPES[0];
+  const totalToday = takenToday.reduce((s, d) => s + (d.quantity || 0), 0);
+  return (
+    <li className="border-2 border-ink p-3">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div className="flex items-start gap-3 flex-1 min-w-0">
+          <span className="text-3xl">{tDef.icon}</span>
+          <div className="flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="font-display text-xl font-bold">{med.name}</h3>
+              <Chip>{tDef.label}</Chip>
+              <Chip color="#3b6aa3">
+                {med.defaultQuantity} {med.unit}
+              </Chip>
+              {takenToday.length > 0 && (
+                <Chip color="#4a6b3e">
+                  <Check size={10} className="inline mr-1" />
+                  {takenToday.length} dose{takenToday.length === 1 ? "" : "s"} today ({totalToday} {med.unit})
+                </Chip>
+              )}
+            </div>
+            {med.notes && (
+              <p className="font-body text-sm italic text-ink-muted mt-1">{med.notes}</p>
+            )}
+            {med.reminderTimes?.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {med.reminderTimes.map((t, i) => (
+                  <span
+                    key={i}
+                    className="font-mono text-[10px] uppercase tracking-[0.2em] border border-ink/40 px-2 py-0.5 inline-flex items-center gap-1"
+                  >
+                    <Clock size={10} /> {t}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="primary" size="sm" onClick={onTake}>
+            <Check size={12} /> Take Dose
+          </Button>
+          <Button variant="outline" size="sm" onClick={onEdit}>
+            <Edit3 size={12} /> Edit
+          </Button>
+          <IconButton onClick={onDelete} aria-label="Delete">
+            <Trash2 size={14} />
+          </IconButton>
+        </div>
+      </div>
+    </li>
+  );
+}
+
+function MedEditorModal({ med, onClose, onSave }) {
+  const [draft, setDraft] = useState(med);
+  const [reminderInput, setReminderInput] = useState("08:00");
+
+  function update(patch) {
+    setDraft((d) => ({ ...d, ...patch }));
+  }
+  function changeType(typeId) {
+    const t = MED_TYPES.find((x) => x.id === typeId) || MED_TYPES[0];
+    setDraft((d) => ({ ...d, type: typeId, unit: d.unit || t.defaultUnit }));
+  }
+  function addReminder() {
+    if (!reminderInput) return;
+    const times = [...(draft.reminderTimes || []), reminderInput];
+    times.sort();
+    update({ reminderTimes: [...new Set(times)] });
+  }
+  function removeReminder(t) {
+    update({ reminderTimes: (draft.reminderTimes || []).filter((x) => x !== t) });
+  }
+
+  function handleSave() {
+    if (!draft.name?.trim()) return alert("Medication needs a name.");
+    onSave({
+      ...draft,
+      name: draft.name.trim(),
+      defaultQuantity: Number(draft.defaultQuantity) || 1,
+      unit: (draft.unit || "").trim(),
+      reminderTimes: [...new Set(draft.reminderTimes || [])].sort(),
+    });
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={med.name ? `Edit ${med.name}` : "New Medication"}
+      maxWidth="max-w-xl"
+      footer={
+        <>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button variant="primary" onClick={handleSave}>Save</Button>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        <Field label="Name">
+          <TextInput
+            value={draft.name}
+            onChange={(e) => update({ name: e.target.value })}
+            placeholder="e.g. Vitamin D3, Metformin, Ozempic"
+          />
+        </Field>
+        <Field label="Type">
+          <Select value={draft.type} onChange={(e) => changeType(e.target.value)}>
+            {MED_TYPES.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.icon} {t.label}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Default quantity per dose">
+            <TextInput
+              type="number"
+              step="0.1"
+              value={draft.defaultQuantity}
+              onChange={(e) => update({ defaultQuantity: e.target.value })}
+            />
+          </Field>
+          <Field label="Unit">
+            <TextInput
+              value={draft.unit}
+              onChange={(e) => update({ unit: e.target.value })}
+              placeholder="tablets, drops, ml, dose…"
+            />
+          </Field>
+        </div>
+        <Field label="Notes (optional)">
+          <TextInput
+            value={draft.notes || ""}
+            onChange={(e) => update({ notes: e.target.value })}
+            placeholder="e.g. Take with food, alternate arm, etc."
+          />
+        </Field>
+
+        <div>
+          <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted mb-1">
+            Reminders
+          </div>
+          <div className="flex gap-2 mb-2">
+            <input
+              type="time"
+              value={reminderInput}
+              onChange={(e) => setReminderInput(e.target.value)}
+              className="border-2 border-ink bg-paper px-2 py-1.5 font-body text-base focus:outline-none focus:border-accent"
+            />
+            <Button variant="outline" type="button" onClick={addReminder}>
+              <Plus size={12} /> Add time
+            </Button>
+          </div>
+          {draft.reminderTimes?.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {draft.reminderTimes.map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => removeReminder(t)}
+                  className="font-mono text-[10px] uppercase tracking-[0.2em] border-2 border-ink px-2 py-1 hover:bg-accent hover:text-paper hover:border-accent transition-colors flex items-center gap-1"
+                  aria-label={`Remove ${t}`}
+                >
+                  <Clock size={10} /> {t}
+                  <Trash2 size={10} className="ml-1" />
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="font-body text-sm italic text-ink-muted">
+              No reminders set. Add times above to get notifications when this medication
+              is due.
+            </p>
+          )}
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function DoseModal({ med, onClose, onLog }) {
+  const [qty, setQty] = useState(med.defaultQuantity || 1);
+  const [note, setNote] = useState("");
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`Take ${med.name}`}
+      footer={
+        <>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button variant="primary" onClick={() => onLog(qty, note)}>
+            Log Dose
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        <Field label={`Quantity (${med.unit})`}>
+          <TextInput
+            type="number"
+            step="0.1"
+            value={qty}
+            onChange={(e) => setQty(e.target.value)}
+          />
+        </Field>
+        <Field label="Note (optional)">
+          <TextInput
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="e.g. left arm, with breakfast"
+          />
+        </Field>
+      </div>
+    </Modal>
+  );
+}

@@ -4,7 +4,7 @@ import { Card, CardHeader, Stat } from "../components/ui/Card.jsx";
 import { Button, IconButton } from "../components/ui/Button.jsx";
 import { Field, TextInput, Chip } from "../components/ui/Field.jsx";
 import { Modal } from "../components/ui/Modal.jsx";
-import { calcMeal, FOODS } from "../store/profiles.js";
+import { FOODS } from "../store/profiles.js";
 import { Plus, Trash2, AlertTriangle } from "lucide-react";
 
 export function Cheat() {
@@ -15,6 +15,7 @@ export function Cheat() {
     removeCheat,
     cheatSurplus,
     dailyTargetKcal,
+    calc,
   } = useApp();
 
   const [picker, setPicker] = useState(null);
@@ -70,7 +71,7 @@ export function Cheat() {
         ) : (
           <ul className="divide-y divide-ink/30 border-y border-ink/30">
             {cheats.map((m) => {
-              const t = calcMeal(m.items);
+              const t = calc(m.items);
               const overBy = Math.max(0, t.kcal - baseline);
               return (
                 <li key={m.id} className="py-2 flex items-start gap-3">
@@ -107,7 +108,7 @@ export function Cheat() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {Object.values(presets).map((p) => {
               const v = p.versions.original || Object.values(p.versions)[0];
-              const t = calcMeal(v.items);
+              const t = calc(v.items);
               return (
                 <button
                   key={p.key}
@@ -143,6 +144,7 @@ export function Cheat() {
 }
 
 function CheatPickerModal({ presets, onClose, onLog }) {
+  const { calc } = useApp();
   return (
     <Modal open onClose={onClose} title="Pick a cheat" maxWidth="max-w-xl">
       <div className="space-y-3">
@@ -157,7 +159,7 @@ function CheatPickerModal({ presets, onClose, onLog }) {
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {Object.entries(p.versions).map(([key, v]) => {
-                const t = calcMeal(v.items);
+                const t = calc(v.items);
                 return (
                   <button
                     key={key}
