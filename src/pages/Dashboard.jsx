@@ -23,6 +23,7 @@ import {
   Clock,
   Utensils,
   Pill,
+  Leaf,
   ShoppingCart,
   CheckCircle2,
   AlertCircle,
@@ -204,9 +205,13 @@ export function Dashboard({ setTab }) {
     }
 
     // Meds & Supplements — separate reminders so the user knows which is which.
+    // Different icon per category so they're visually distinct in the panel:
+    // Pill for meds (prescription, clinical), Leaf for supps (vitamins,
+    // gummies, wellness).
     function buildPharmaReminder(category, label, targetTab) {
       const itemsInCat = meds.filter((m) => (m.category || "med") === category);
       if (itemsInCat.length === 0) return null;
+      const categoryIcon = category === "supplement" ? Leaf : Pill;
       const dosesInCat = medsTakenToday.filter((d) => (d.category || "med") === category);
       // Build full upcoming list, then find the next un-taken slot.
       const up = [];
@@ -236,7 +241,7 @@ export function Dashboard({ setTab }) {
       if (next) {
         return {
           id: `${category}-next`,
-          icon: Pill,
+          icon: categoryIcon,
           domain: category,
           label: `${label} · ${next.med.name}`,
           detail: `${next.med.defaultQuantity} ${next.med.unit} at ${next.time}${
@@ -290,7 +295,7 @@ export function Dashboard({ setTab }) {
         );
         return {
           id: `${category}-pending`,
-          icon: Pill,
+          icon: categoryIcon,
           domain: category,
           label: `${dueTodayItems.length} ${label.toLowerCase()} due today`,
           detail: noTimesYet
@@ -684,12 +689,14 @@ export function Dashboard({ setTab }) {
             accent={sleep?.hours >= 7 ? "#4a6b3e" : sleep?.hours ? "#c44827" : "#6b5a3e"}
           />
           <MedsHabitTile
+            icon={Pill}
             kicker="Meds"
             meds={meds.filter((m) => (m.category || "med") === "med")}
             doses={medsTakenToday.filter((d) => (d.category || "med") === "med")}
             onClick={() => setTab("meds")}
           />
           <MedsHabitTile
+            icon={Leaf}
             kicker="Supps"
             meds={meds.filter((m) => (m.category || "med") === "supplement")}
             doses={medsTakenToday.filter((d) => (d.category || "med") === "supplement")}
@@ -761,7 +768,7 @@ function HabitTile({ icon: Icon, label, value, suffix, accent }) {
   );
 }
 
-function MedsHabitTile({ kicker, meds, doses, onClick }) {
+function MedsHabitTile({ icon: Icon, kicker, meds, doses, onClick }) {
   // Compute "due today" count by checking each med's repeat cycle.
   const today = new Date();
   const todayDateKey = (() => {
@@ -786,6 +793,7 @@ function MedsHabitTile({ kicker, meds, doses, onClick }) {
       className="border-2 border-ink p-3 text-left hover:bg-ink/5 transition-colors"
     >
       <div className="flex items-center gap-2 mb-1">
+        {Icon && <Icon size={14} />}
         <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted">
           {kicker}
         </span>
