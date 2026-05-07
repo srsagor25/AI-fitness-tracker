@@ -54,7 +54,7 @@ export function Layout({ tab, subTab, setTab, setSubTab, children }) {
           </p>
         </header>
 
-        {/* Primary nav: 5 top-level tabs */}
+        {/* Primary nav: 5 top-level tabs (icon + label, always shown) */}
         <nav className="border-y-2 border-ink mb-4 md:mb-6">
           <div className="grid grid-cols-5">
             {PRIMARY_TABS.map((t) => {
@@ -64,31 +64,35 @@ export function Layout({ tab, subTab, setTab, setSubTab, children }) {
                 <button
                   key={t.id}
                   onClick={() => setTab(t.id)}
-                  className={`py-3 px-2 font-mono text-[10px] uppercase tracking-[0.18em] inline-flex items-center justify-center gap-1.5 transition-colors ${
+                  className={`py-2 md:py-3 px-1 flex flex-col md:flex-row items-center justify-center gap-0.5 md:gap-1.5 transition-colors ${
                     active ? "bg-ink text-paper" : "text-ink hover:bg-ink/10"
                   }`}
                 >
-                  <Icon size={14} />
-                  <span className="hidden sm:inline">{t.label}</span>
+                  <Icon size={16} />
+                  <span className="font-mono text-[9px] md:text-[10px] uppercase tracking-[0.15em] md:tracking-[0.18em]">
+                    {t.label}
+                  </span>
                 </button>
               );
             })}
           </div>
 
-          {/* Sub-tab pill row — only when current tab has children */}
+          {/* Sub-tab pill row — only when current tab has children. Fills the
+              row evenly so 2 sub-tabs (Activity/Body) don't look orphaned. */}
           {hasSubs && (
-            <div className="border-t border-ink/30 overflow-x-auto bg-ink/5">
-              <div className="flex min-w-max md:min-w-0">
+            <div className="border-t border-ink/30 bg-ink/5 overflow-x-auto">
+              <div
+                className="grid"
+                style={{ gridTemplateColumns: `repeat(${def.subTabs.length}, minmax(0, 1fr))` }}
+              >
                 {def.subTabs.map((s) => {
                   const active = subTab === s.id;
                   return (
                     <button
                       key={s.id}
                       onClick={() => setSubTab(s.id)}
-                      className={`flex-1 md:flex-none px-4 py-2 font-mono text-[10px] uppercase tracking-[0.18em] whitespace-nowrap transition-colors ${
-                        active
-                          ? "bg-ink text-paper"
-                          : "text-ink hover:bg-ink/10"
+                      className={`px-2 md:px-4 py-2 font-mono text-[10px] uppercase tracking-[0.15em] md:tracking-[0.18em] whitespace-nowrap transition-colors ${
+                        active ? "bg-ink text-paper" : "text-ink hover:bg-ink/10"
                       }`}
                     >
                       {s.label}
