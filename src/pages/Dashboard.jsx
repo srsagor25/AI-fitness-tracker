@@ -3,7 +3,13 @@ import { useApp } from "../store/AppContext.jsx";
 import { Card, CardHeader, Stat } from "../components/ui/Card.jsx";
 import { Button } from "../components/ui/Button.jsx";
 import { Chip, ProgressBar } from "../components/ui/Field.jsx";
-import { bmr, tdee } from "../lib/calories.js";
+import {
+  bmr,
+  tdee,
+  stepsToKcal,
+  kcalToKg,
+  expectedTrainingKcal,
+} from "../lib/calories.js";
 import { formatMMSS, DAYS_LONG, dayOfWeek } from "../lib/time.js";
 import { FOODS } from "../store/profiles.js";
 import {
@@ -301,18 +307,28 @@ export function Dashboard({ setTab }) {
     return s + q;
   }, 0);
 
-  // Burn target: scaled with goal — clear, separable from intake.
-  // Default burn target = TDEE − BMR (i.e. activity-driven calories the
-  // body should "spend" daily). Goal scales it: bulk demands less, cut more.
-  const baseBurnTarget = Math.max(0, tdee(profile) - bmr(profile));
+  // Burn target — linked to today's scheduled program day (or rest) plus
+  // the user's step baseline. So a Push day with a 10k step baseline asks
+  // for ~training-kcal + ~step-kcal; a rest day asks for just step-kcal.
   const goalKey = profile.goalKey || profile.goal || "maintain";
-  const burnMult = goalKey === "cut" ? 1.2 : goalKey === "bulk" ? 0.8 : goalKey === "muscle_build" ? 1.0 : 1.0;
-  const burnTarget = Math.round(baseBurnTarget * burnMult);
-  const burned = Math.round(todaysWorkoutKcal); // workout kcal counts as deliberate burn
+  const userWeightKg = profile.stats?.weightKg || 70;
+  const stepGoal = profile.stepAdjust?.baseline || 10000;
+  const expectedTraining = expectedTrainingKcal({ day: todaysDay, weightKg: userWeightKg });
+  const expectedSteps = stepsToKcal(stepGoal, userWeightKg);
+  const burnTarget = Math.max(0, Math.round(expectedTraining + expectedSteps));
+
+  const actualSteps = stepsToKcal(steps, userWeightKg);
+  const burned = Math.round(todaysWorkoutKcal + actualSteps);
+
   const eaten = Math.round(dayTotals.kcal);
   const eatTarget = Math.round(dailyTargetKcal);
   const overEat = eaten - eatTarget;
   const burnRemaining = burnTarget - burned;
+
+  // Approx weight change today: the calorie surplus or deficit between what
+  // you ate and what your body actually needs (eating target). 7700 kcal/kg.
+  const calorieBalance = eaten - eatTarget; // + over, − under
+  const weightDeltaKg = kcalToKg(calorieBalance);
 
   return (
     <>
@@ -351,8 +367,17 @@ export function Dashboard({ setTab }) {
           goalKey={goalKey}
           overEat={overEat}
           burnRemaining={burnRemaining}
+          todaysDay={todaysDay}
+          expectedTraining={expectedTraining}
+          stepGoal={stepGoal}
+          expectedSteps={expectedSteps}
         />
-        <EnergyHeroFooter eaten={eaten} burned={burned} />
+        <EnergyHeroFooter
+          eaten={eaten}
+          eatTarget={eatTarget}
+          calorieBalance={calorieBalance}
+          weightDeltaKg={weightDeltaKg}
+        />
       </Card>
 
       <QuickLog
@@ -831,6 +856,10 @@ function EnergyHero({
   goalKey,
   overEat,
   burnRemaining,
+  todaysDay,
+  expectedTraining,
+  stepGoal,
+  expectedSteps,
 }) {
   const eatStateValue = Math.abs(overEat).toLocaleString();
   const eatStateLabel = overEat > 0 ? "kcal over" : "kcal left";
@@ -867,7 +896,11 @@ function EnergyHero({
         stateValue={burnStateValue}
         stateLabel={burnStateLabel}
         stateColor={burnStateColor}
-        details={`Goal "${goalKey}" sets target ${burnTarget} kcal/day from training`}
+        details={
+          todaysDay
+            ? `Today: ${todaysDay.name} (~${expectedTraining} kcal) + ${stepGoal.toLocaleString()} steps target (~${expectedSteps} kcal)`
+            : `Rest day: just ${stepGoal.toLocaleString()} step target (~${expectedSteps} kcal)`
+        }
         ringValue={burned}
         ringMax={burnTarget}
         ringColor="#4a6b3e"
@@ -876,28 +909,67 @@ function EnergyHero({
   );
 }
 
-function EnergyHeroFooter({ eaten, burned }) {
-  const net = eaten - burned;
-  const color = net > 0 ? "#c44827" : net < 0 ? "#4a6b3e" : "#6b5a3e";
+function EnergyHeroFooter({ eaten, eatTarget, calorieBalance, weightDeltaKg }) {
+  // Eating-vs-target: positive = surplus, negative = deficit.
+  // Reframed for clarity: "Over calories" / "Less calories" instead of net.
+  const isOver = calorieBalance > 0;
+  const isUnder = calorieBalance < 0;
+  const stateLabel = isOver
+    ? "Over calories"
+    : isUnder
+      ? "Less calories"
+      : "On target";
+  const stateColor = isOver ? "#c44827" : isUnder ? "#4a6b3e" : "#6b5a3e";
+  const balanceMag = Math.abs(calorieBalance).toLocaleString();
+
+  // Approx weight gain/loss today: surplus → fat gain; deficit → fat loss.
+  // 7700 kcal ≈ 1 kg of fat. At ~daily scale this is small (kg → grams).
+  const grams = weightDeltaKg * 1000;
+  const weightLabel = isOver ? "≈ weight gain" : isUnder ? "≈ weight loss" : "no change";
+  const weightSign = grams > 0 ? "+" : grams < 0 ? "−" : "";
+  const weightShown = Math.abs(grams) < 100
+    ? `${weightSign}${Math.round(Math.abs(grams))} g`
+    : `${weightSign}${Math.abs(grams / 1000).toFixed(2)} kg`;
+
   return (
-    <div className="mt-4 border-2 border-ink p-3 bg-ink/5 grid grid-cols-1 md:grid-cols-3 gap-2">
-      <div className="md:col-span-1">
+    <div className="mt-4 border-2 border-ink p-3 bg-ink/5 grid grid-cols-1 md:grid-cols-2 gap-3">
+      <div>
         <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted">
-          Net energy
+          Calorie balance
         </div>
-        <div
-          className="font-display text-3xl font-black tabular-nums leading-tight"
-          style={{ color }}
-        >
-          {net >= 0 ? "+" : ""}
-          {net}
-          <span className="font-mono text-xs uppercase tracking-widest text-ink-muted ml-1">
-            kcal
+        <div className="flex items-baseline gap-2 mt-1 flex-wrap">
+          <span
+            className="font-display text-3xl md:text-4xl font-black tabular-nums leading-none"
+            style={{ color: stateColor }}
+          >
+            {balanceMag}
+          </span>
+          <span className="font-mono text-[11px] uppercase tracking-[0.25em] text-ink-muted">
+            kcal {stateLabel.toLowerCase()}
           </span>
         </div>
+        <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted mt-1">
+          Eaten {eaten} vs target {eatTarget} kcal
+        </div>
       </div>
-      <div className="md:col-span-2 flex items-center font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted leading-relaxed">
-        Eaten {eaten} − Burned {burned} = Net {net} kcal
+      <div>
+        <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted">
+          Estimated weight today
+        </div>
+        <div className="flex items-baseline gap-2 mt-1 flex-wrap">
+          <span
+            className="font-display text-3xl md:text-4xl font-black tabular-nums leading-none"
+            style={{ color: stateColor }}
+          >
+            {weightShown}
+          </span>
+          <span className="font-mono text-[11px] uppercase tracking-[0.25em] text-ink-muted">
+            {weightLabel}
+          </span>
+        </div>
+        <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted mt-1">
+          7,700 kcal ≈ 1 kg fat — see History for trend
+        </div>
       </div>
     </div>
   );

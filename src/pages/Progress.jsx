@@ -5,7 +5,10 @@ import { Button, IconButton } from "../components/ui/Button.jsx";
 import { Field, TextInput, Select, Chip } from "../components/ui/Field.jsx";
 import { Modal } from "../components/ui/Modal.jsx";
 import { fileToResizedBase64 } from "../lib/aiVision.js";
-import { bmr } from "../lib/calories.js";
+import { bmr, kcalToKg, estimateWorkoutKcal, dailyTarget } from "../lib/calories.js";
+import { calcMeal } from "../store/profiles.js";
+import { load } from "../store/storage.js";
+import { todayKey } from "../lib/time.js";
 import {
   Plus,
   Trash2,
@@ -250,6 +253,15 @@ export function Progress() {
               </div>
             )}
           </Card>
+
+          {/* Estimated weight change from calorie balance — placed here so
+              you can compare side-by-side with the measured weight trend
+              chart above. */}
+          <EstimatedWeightChange
+            profile={profile}
+            windowDays={windowDays}
+            sortedMeasurements={sorted}
+          />
 
           {/* History list */}
           <Card>
@@ -937,5 +949,224 @@ function PhotoPanel({ p, label }) {
         {p.note && <span className="font-body text-sm italic">{p.note}</span>}
       </div>
     </div>
+  );
+}
+
+// ============================================================================
+// EstimatedWeightChange — uses the daily calorie balance (eaten − target)
+// to project an approximate weight change. Sits next to the measured weight
+// chart so the user can sanity-check predictions vs. reality.
+// 7,700 kcal ≈ 1 kg of fat (3,500 kcal/lb).
+// ============================================================================
+
+const MEAL_SLOTS = ["lunch", "shake", "dinner", "snack"];
+
+function EstimatedWeightChange({ profile, windowDays, sortedMeasurements }) {
+  const data = useMemo(() => {
+    const out = [];
+    const days = windowDays || 30;
+    const cursor = new Date();
+    cursor.setHours(0, 0, 0, 0);
+    let cumulative = 0;
+    let cumKcal = 0;
+    for (let i = 0; i < days; i++) {
+      const k = todayKey(cursor);
+      const meals = load(`meals:${k}`, null);
+      const cheats = load(`cheats:${k}`, null);
+      if (meals || cheats) {
+        let kcalIn = 0;
+        for (const slot of MEAL_SLOTS) {
+          for (const m of meals?.[slot] || []) kcalIn += calcMeal(m.items).kcal;
+        }
+        for (const c of cheats || []) kcalIn += calcMeal(c.items).kcal;
+
+        const dayTypeId = load(`dayType:${k}`, profile.dayTypes[0]?.id || "rest");
+        const dayType = profile.dayTypes.find((dt) => dt.id === dayTypeId) || profile.dayTypes[0];
+        const baseTarget = dayType?.target || dailyTarget(profile);
+
+        const stepsCount = load(`steps:${k}`, 0);
+        const sa = profile.stepAdjust || {};
+        const stepAdj =
+          stepsCount < (sa.lowThreshold || 0)
+            ? sa.lowDelta || 0
+            : stepsCount > (sa.highThreshold || Infinity)
+              ? sa.highDelta || 0
+              : 0;
+
+        const sessionsToday = (load("workout:history", []) || []).filter(
+          (s) => todayKey(new Date(s.date)) === k,
+        );
+        const workoutKcal = sessionsToday.reduce(
+          (s, h) =>
+            s +
+            estimateWorkoutKcal({
+              durationSec: h.durationSec,
+              weightKg: profile.stats?.weightKg || 70,
+              totalVolume: h.totalVolume,
+            }),
+          0,
+        );
+
+        const target = Math.max(1200, baseTarget + stepAdj + workoutKcal);
+        const balance = kcalIn - target;
+        cumKcal += balance;
+        cumulative += kcalToKg(balance);
+        out.push({
+          date: new Date(cursor),
+          key: k,
+          kcalIn: Math.round(kcalIn),
+          target: Math.round(target),
+          balance: Math.round(balance),
+          deltaKg: kcalToKg(balance),
+          cumulativeKg: cumulative,
+        });
+      }
+      cursor.setDate(cursor.getDate() - 1);
+    }
+    return { entries: out.reverse(), cumKcal, cumKg: kcalToKg(cumKcal) };
+  }, [windowDays, profile]);
+
+  // Match window of measured weights for side-by-side comparison.
+  const cutoff = Date.now() - (windowDays || 30) * 86400000;
+  const measuredInWindow = sortedMeasurements.filter((e) => e.date >= cutoff);
+  const measuredFirst = measuredInWindow[0];
+  const measuredLast = measuredInWindow[measuredInWindow.length - 1];
+  const measuredDeltaKg =
+    measuredFirst?.weightKg && measuredLast?.weightKg
+      ? measuredLast.weightKg - measuredFirst.weightKg
+      : null;
+
+  const direction = data.cumKg > 0 ? "gain" : data.cumKg < 0 ? "loss" : "no change";
+  const dirColor = data.cumKg > 0 ? "#c44827" : data.cumKg < 0 ? "#4a6b3e" : "#6b5a3e";
+
+  return (
+    <Card>
+      <CardHeader
+        kicker="Estimated"
+        title="Weight change from calorie balance"
+        subtitle="Approximation from daily eaten−target. Compare against the measured weight chart above."
+      />
+
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        <div className="border-2 border-ink p-3">
+          <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted">
+            Estimated change
+          </div>
+          <div className="flex items-baseline gap-2 mt-1 flex-wrap">
+            <span
+              className="font-display text-3xl md:text-4xl font-black tabular-nums leading-none"
+              style={{ color: dirColor }}
+            >
+              {data.cumKg > 0 ? "+" : data.cumKg < 0 ? "−" : ""}
+              {Math.abs(data.cumKg).toFixed(2)}
+            </span>
+            <span className="font-mono text-[11px] uppercase tracking-[0.25em] text-ink-muted">
+              kg {direction}
+            </span>
+          </div>
+          <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted mt-1">
+            From {data.cumKcal >= 0 ? "+" : ""}
+            {data.cumKcal.toLocaleString()} kcal balance over {data.entries.length} day
+            {data.entries.length === 1 ? "" : "s"}
+          </div>
+        </div>
+        <div className="border-2 border-ink p-3">
+          <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted">
+            Measured change
+          </div>
+          {measuredDeltaKg != null ? (
+            <>
+              <div className="flex items-baseline gap-2 mt-1 flex-wrap">
+                <span
+                  className="font-display text-3xl md:text-4xl font-black tabular-nums leading-none"
+                  style={{
+                    color: measuredDeltaKg > 0 ? "#c44827" : measuredDeltaKg < 0 ? "#4a6b3e" : "#6b5a3e",
+                  }}
+                >
+                  {measuredDeltaKg > 0 ? "+" : measuredDeltaKg < 0 ? "−" : ""}
+                  {Math.abs(measuredDeltaKg).toFixed(1)}
+                </span>
+                <span className="font-mono text-[11px] uppercase tracking-[0.25em] text-ink-muted">
+                  kg actual
+                </span>
+              </div>
+              <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted mt-1">
+                {measuredFirst.weightKg.toFixed(1)} → {measuredLast.weightKg.toFixed(1)} kg over{" "}
+                {measuredInWindow.length} weigh-ins
+              </div>
+            </>
+          ) : (
+            <div className="font-display text-2xl text-ink-muted mt-1">—</div>
+          )}
+        </div>
+        <div className="border-2 border-ink p-3 col-span-2 md:col-span-1">
+          <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted">
+            Variance
+          </div>
+          {measuredDeltaKg != null ? (
+            <>
+              <div className="font-display text-3xl md:text-4xl font-black tabular-nums leading-none mt-1">
+                {(measuredDeltaKg - data.cumKg).toFixed(2)}
+                <span className="font-mono text-xs uppercase tracking-widest text-ink-muted ml-1">
+                  kg
+                </span>
+              </div>
+              <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted mt-1">
+                Measured − estimated. Big gap → either logging missed days or
+                metabolic baseline differs from estimate.
+              </div>
+            </>
+          ) : (
+            <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted mt-1 italic">
+              Log at least 2 weigh-ins to compare.
+            </div>
+          )}
+        </div>
+      </div>
+
+      {data.entries.length > 0 && (
+        <ul className="divide-y divide-ink/30 border-y border-ink/30 mt-4 max-h-96 overflow-y-auto">
+          {[...data.entries].reverse().map((d) => {
+            const isOver = d.balance > 0;
+            const isUnder = d.balance < 0;
+            const c = isOver ? "#c44827" : isUnder ? "#4a6b3e" : "#6b5a3e";
+            return (
+              <li key={d.key} className="py-2 flex items-center gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="font-body text-base">
+                    {d.date.toLocaleDateString("en-US", {
+                      weekday: "short",
+                      month: "short",
+                      day: "numeric",
+                    })}
+                  </div>
+                  <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted">
+                    Eaten {d.kcalIn} vs target {d.target} kcal
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div
+                    className="font-display text-lg font-bold tabular-nums"
+                    style={{ color: c }}
+                  >
+                    {d.balance > 0 ? "+" : ""}
+                    {d.balance}
+                    <span className="font-mono text-[9px] uppercase tracking-widest text-ink-muted ml-1">
+                      kcal
+                    </span>
+                  </div>
+                  <div className="font-mono text-[10px] uppercase tracking-[0.2em]" style={{ color: c }}>
+                    ≈ {d.deltaKg > 0 ? "+" : d.deltaKg < 0 ? "−" : ""}
+                    {Math.abs(d.deltaKg * 1000) < 100
+                      ? `${Math.round(Math.abs(d.deltaKg * 1000))} g`
+                      : `${Math.abs(d.deltaKg).toFixed(2)} kg`}
+                  </div>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </Card>
   );
 }

@@ -6,6 +6,8 @@ import { Chip, ProgressBar } from "../components/ui/Field.jsx";
 import { formatMMSS, todayKey } from "../lib/time.js";
 import { estimateWorkoutKcal } from "../lib/calories.js";
 import { calcMeal } from "../store/profiles.js";
+import { stepsToKcal, kcalToKg } from "../lib/calories.js";
+import { dailyTarget } from "../lib/calories.js";
 import { load, listKeys } from "../store/storage.js";
 import {
   Trash2,

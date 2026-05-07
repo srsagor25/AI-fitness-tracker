@@ -66,6 +66,48 @@ export function estimateWorkoutKcal({ durationSec, weightKg, totalVolume }) {
   return Math.round(met * w * hours);
 }
 
+// Convert step count to calories burned. Standard estimate ~0.04 kcal/step
+// at 70 kg, scaled linearly by body weight.
+export function stepsToKcal(steps, weightKg) {
+  const w = Number(weightKg) || 70;
+  return Math.round((Number(steps) || 0) * 0.04 * (w / 70));
+}
+
+// Approx weight change from a calorie surplus/deficit. 7700 kcal ≈ 1 kg of
+// fat (3500 kcal/lb). Returns kg (positive = gain, negative = loss).
+export function kcalToKg(kcal) {
+  return (Number(kcal) || 0) / 7700;
+}
+
+// Estimated training calories for a planned program day (before any sets are
+// logged). Uses the same time-budget heuristic as Workout.jsx: ~3 sec/rep,
+// 5 sec setup, plus 5 min warm-up.
+const SEC_PER_REP = 3;
+const SETUP_SEC = 5;
+const WARMUP_SEC = 5 * 60;
+
+export function estimateMinutesForDay(day) {
+  if (!day) return 0;
+  const total = day.exercises.reduce(
+    (s, ex) =>
+      s + (ex.sets || 0) * ((ex.reps || 0) * SEC_PER_REP + SETUP_SEC + (ex.restSec || 0)),
+    WARMUP_SEC,
+  );
+  return Math.round(total / 60);
+}
+
+export function expectedTrainingKcal({ day, weightKg }) {
+  if (!day) return 0;
+  const minutes = estimateMinutesForDay(day);
+  return estimateWorkoutKcal({
+    durationSec: minutes * 60,
+    weightKg,
+    // Volume unknown until sets are logged — use a mid-range estimate so the
+    // expected number is in the right ballpark (not 0).
+    totalVolume: minutes * 80,
+  });
+}
+
 export function netEnergy({ kcalIn, target, workoutKcal }) {
   return {
     kcalIn,
