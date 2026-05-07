@@ -195,23 +195,28 @@ export function Grocery() {
                     const isLow = it.qty <= it.lowThreshold;
                     const pctOfPacket = (it.qty / Math.max(1, it.initialQty)) * 100;
                     return (
-                      <li key={it.key} className="py-2 flex items-center gap-3 flex-wrap">
-                        <span className="text-2xl">{it.icon}</span>
-                        <div className="flex-1 min-w-0">
-                          <div className="font-body text-base flex items-center gap-2 flex-wrap">
-                            {it.name}
-                            {isLow && <Chip color="#c44827">Low</Chip>}
-                            {it.perishable && (
-                              <Chip color="#c44827">Perishable · {it.maxDays || 7}d max</Chip>
-                            )}
-                            {it.optional && <Chip color="#6b5a3e">Optional</Chip>}
-                          </div>
-                          <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted">
-                            Threshold {it.lowThreshold}{it.unit} · Packet {it.packetSize}{it.unit}
-                            {it.perishable && ` · keep ≤ ${it.maxDays || 7} days of stock`}
+                      <li
+                        key={it.key}
+                        className="py-2 flex flex-col md:flex-row md:items-center gap-2 md:gap-3"
+                      >
+                        <div className="flex items-start gap-3 flex-1 min-w-0">
+                          <span className="text-2xl shrink-0">{it.icon}</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="font-body text-base flex items-center gap-2 flex-wrap">
+                              <span className="break-words">{it.name}</span>
+                              {isLow && <Chip color="#c44827">Low</Chip>}
+                              {it.perishable && (
+                                <Chip color="#c44827">Perishable · {it.maxDays || 7}d</Chip>
+                              )}
+                              {it.optional && <Chip color="#6b5a3e">Optional</Chip>}
+                            </div>
+                            <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted">
+                              Threshold {it.lowThreshold}{it.unit} · Packet {it.packetSize}{it.unit}
+                              {it.perishable && ` · keep ≤ ${it.maxDays || 7} days`}
+                            </div>
                           </div>
                         </div>
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1 flex-wrap md:flex-nowrap shrink-0 self-end md:self-center">
                           <IconButton
                             onClick={() => adjustGrocery(it.key, -1 * (it.unit === "pc" ? 1 : 50))}
                             aria-label="Decrease"
@@ -329,31 +334,41 @@ export function Grocery() {
                           ? `Out in ${daysLeftDisplay}`
                           : "Below threshold";
                     return (
-                      <li key={it.key} className="py-2 flex items-center gap-3 flex-wrap">
-                        <span className="text-2xl">{it.icon}</span>
-                        <div className="flex-1 min-w-0">
-                          <div className="font-body text-base flex items-center gap-2 flex-wrap">
-                            {it.name}
-                            <Chip color="#c44827">{reasonChip}</Chip>
-                            {it.perishable && (
-                              <Chip color="#c44827">Perishable · {it.maxDays || 7}d</Chip>
-                            )}
-                          </div>
-                          <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted">
-                            Have {Math.round(it.qty)}{it.unit}
-                            {f.avgDaily > 0 && (
-                              <>
-                                {" "}
-                                · uses {f.avgDaily.toFixed(1)}{it.unit}/day · runs out in{" "}
-                                {daysLeftDisplay}
-                              </>
-                            )}
-                            {" · "}Buy {packets} packet{packets === 1 ? "" : "s"} ({it.packetSize}
-                            {it.unit} each)
-                            {it.perishable && " · top up only"}
+                      <li
+                        key={it.key}
+                        className="py-2 flex flex-col md:flex-row md:items-center gap-2 md:gap-3"
+                      >
+                        <div className="flex items-start gap-3 flex-1 min-w-0">
+                          <span className="text-2xl shrink-0">{it.icon}</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="font-body text-base flex items-center gap-2 flex-wrap">
+                              <span className="break-words">{it.name}</span>
+                              <Chip color="#c44827">{reasonChip}</Chip>
+                              {it.perishable && (
+                                <Chip color="#c44827">Perishable · {it.maxDays || 7}d</Chip>
+                              )}
+                            </div>
+                            <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted">
+                              Have {Math.round(it.qty)}{it.unit}
+                              {f.avgDaily > 0 && (
+                                <>
+                                  {" "}
+                                  · uses {f.avgDaily.toFixed(1)}{it.unit}/day · runs out in{" "}
+                                  {daysLeftDisplay}
+                                </>
+                              )}
+                              {" · "}Buy {packets} packet{packets === 1 ? "" : "s"} ({it.packetSize}
+                              {it.unit} each)
+                              {it.perishable && " · top up only"}
+                            </div>
                           </div>
                         </div>
-                        <Button variant="primary" size="sm" onClick={() => restockGrocery(it.key)}>
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          className="shrink-0 self-end md:self-center"
+                          onClick={() => restockGrocery(it.key)}
+                        >
                           Bought
                         </Button>
                       </li>

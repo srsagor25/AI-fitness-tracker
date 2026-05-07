@@ -46,9 +46,9 @@ export const MED_TYPES = [
   { id: "syrup", label: "Syrup / Liquid", icon: "🧴", iconCmp: Droplet, defaultUnit: "ml" },
   { id: "spray", label: "Spray", icon: "💨", iconCmp: Droplet, defaultUnit: "sprays" },
   { id: "inhaler", label: "Inhaler", icon: "🫁", iconCmp: Droplet, defaultUnit: "puffs" },
-  { id: "vaccine", label: "Vaccine / Injection", icon: "💉", iconCmp: Syringe, defaultUnit: "dose" },
+  { id: "vaccine", label: "Vaccine", icon: "💉", iconCmp: Syringe, defaultUnit: "dose" },
   { id: "topical", label: "Topical / Cream", icon: "🩹", iconCmp: Pill, defaultUnit: "applications" },
-  { id: "therapy", label: "Therapy / Workout", icon: "🧘", iconCmp: Pill, defaultUnit: "minutes", defaultQuantity: 30 },
+  { id: "therapy", label: "Therapy", icon: "🧘", iconCmp: Pill, defaultUnit: "minutes", defaultQuantity: 30 },
   { id: "other", label: "Other", icon: "🩺", iconCmp: Pill, defaultUnit: "units" },
 ];
 
@@ -388,12 +388,14 @@ function MedRow({ med, takenToday, onTake, onEdit, onDelete }) {
   const next = dueToday ? null : nextDueDate(med);
   return (
     <li className={`border-2 p-3 ${!dueToday ? "border-ink/30 bg-ink/5" : "border-ink"}`}>
-      <div className="flex items-start justify-between gap-3 flex-wrap">
+      {/* Stack vertically on mobile so the long med name + chips don't get
+          hidden behind the action buttons. Side-by-side from md upwards. */}
+      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
         <div className="flex items-start gap-3 flex-1 min-w-0">
-          <span className="text-3xl">{tDef.icon}</span>
-          <div className="flex-1">
+          <span className="text-3xl shrink-0">{tDef.icon}</span>
+          <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="font-display text-xl font-bold">{med.name}</h3>
+              <h3 className="font-display text-xl font-bold break-words">{med.name}</h3>
               <Chip>{tDef.label}</Chip>
               <Chip color="#3b6aa3">
                 {med.defaultQuantity} {med.unit}
@@ -428,7 +430,7 @@ function MedRow({ med, takenToday, onTake, onEdit, onDelete }) {
             )}
           </div>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 shrink-0">
           <Button variant="primary" size="sm" onClick={onTake}>
             <Check size={12} /> Take Dose
           </Button>

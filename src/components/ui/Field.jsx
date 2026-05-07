@@ -35,7 +35,7 @@ export function Select({ className = "", children, ...rest }) {
 export function Chip({ children, className = "", color = "#2a2419" }) {
   return (
     <span
-      className={`font-mono text-[9px] uppercase tracking-[0.2em] border px-1.5 py-0.5 ${className}`}
+      className={`font-mono text-[9px] uppercase tracking-[0.2em] border px-1.5 py-0.5 whitespace-nowrap ${className}`}
       style={{ color, borderColor: color }}
     >
       {children}
