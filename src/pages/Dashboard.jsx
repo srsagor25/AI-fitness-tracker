@@ -768,7 +768,8 @@ function EnergyPanel({
   value,
   target,
   color,
-  state,
+  stateValue,
+  stateLabel,
   stateColor,
   details,
   ringValue,
@@ -796,11 +797,19 @@ function EnergyPanel({
           <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted">
             {kicker}
           </div>
-          <div
-            className="font-display text-2xl md:text-3xl font-black mt-1 leading-tight"
-            style={{ color: stateColor }}
-          >
-            {state}
+          {/* Number + label split: number gets the colored display font, the
+              word label is a smaller mono uppercase tag in muted ink. Makes
+              the magnitude pop without flooding the area in red/green. */}
+          <div className="mt-1 leading-tight flex items-baseline gap-2 flex-wrap">
+            <span
+              className="font-display text-3xl md:text-4xl font-black tabular-nums"
+              style={{ color: stateColor }}
+            >
+              {stateValue}
+            </span>
+            <span className="font-mono text-[11px] uppercase tracking-[0.25em] text-ink-muted">
+              {stateLabel}
+            </span>
           </div>
           <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted mt-2 leading-relaxed">
             {details}
@@ -823,16 +832,12 @@ function EnergyHero({
   overEat,
   burnRemaining,
 }) {
-  const eatState =
-    overEat > 0
-      ? `${overEat} OVER`
-      : `${Math.abs(overEat)} LEFT`;
+  const eatStateValue = Math.abs(overEat).toLocaleString();
+  const eatStateLabel = overEat > 0 ? "kcal over" : "kcal left";
   const eatStateColor = overEat > 0 ? "#c44827" : "#4a6b3e";
 
-  const burnState =
-    burnRemaining <= 0
-      ? `${Math.abs(burnRemaining)} BONUS`
-      : `${burnRemaining} TO GO`;
+  const burnStateValue = Math.abs(burnRemaining).toLocaleString();
+  const burnStateLabel = burnRemaining <= 0 ? "kcal bonus" : "kcal to go";
   const burnStateColor = burnRemaining <= 0 ? "#4a6b3e" : "#6b5a3e";
 
   return (
@@ -842,7 +847,8 @@ function EnergyHero({
         value={eaten}
         target={eatTarget}
         color="#2a2419"
-        state={eatState}
+        stateValue={eatStateValue}
+        stateLabel={eatStateLabel}
         stateColor={eatStateColor}
         details={
           todaysWorkoutKcal > 0
@@ -858,7 +864,8 @@ function EnergyHero({
         value={burned}
         target={burnTarget}
         color="#4a6b3e"
-        state={burnState}
+        stateValue={burnStateValue}
+        stateLabel={burnStateLabel}
         stateColor={burnStateColor}
         details={`Goal "${goalKey}" sets target ${burnTarget} kcal/day from training`}
         ringValue={burned}
@@ -913,21 +920,33 @@ function QuickLog({
   setTab,
 }) {
   const [open, setOpen] = useState(null); // null | "weight" | "sleep"
+  const [confirmed, setConfirmed] = useState(null); // key of last tapped tile
   const [weight, setWeight] = useState("");
   const [hours, setHours] = useState(sleep?.hours ?? "");
   const [bedTime, setBedTime] = useState(sleep?.bedTime ?? "");
   const [wakeTime, setWakeTime] = useState(sleep?.wakeTime ?? "");
   const [quality, setQuality] = useState(sleep?.quality ?? "");
 
+  // Show a "Done ✓" overlay on a tile for ~1.4s after tap so the user
+  // gets immediate visual confirmation the entry was logged.
+  function flashConfirm(key) {
+    setConfirmed(key);
+    setTimeout(() => {
+      setConfirmed((cur) => (cur === key ? null : cur));
+    }, 1400);
+  }
+
   function commitWeight() {
     if (!weight) return;
     addMeasurement({ weightKg: weight });
     setWeight("");
     setOpen(null);
+    flashConfirm("weight");
   }
   function commitSleep() {
     setSleepEntry({ hours, bedTime, wakeTime, quality });
     setOpen(null);
+    flashConfirm("sleep");
   }
 
   return (
@@ -938,62 +957,62 @@ function QuickLog({
         subtitle="The fastest way to log today's basics."
       />
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
-        <button
-          onClick={() => addWaterEntry({ qty: 1, unit: "cup" })}
-          className="border-2 border-ink p-3 hover:bg-ink hover:text-paper transition-colors flex flex-col items-center gap-1"
-        >
-          <Droplet size={18} />
-          <span className="font-mono text-[10px] uppercase tracking-[0.2em]">+1 cup</span>
-          <span className="font-body text-xs text-ink-muted">water</span>
-        </button>
-        <button
-          onClick={() => addWaterEntry({ qty: 500, unit: "ml" })}
-          className="border-2 border-ink p-3 hover:bg-ink hover:text-paper transition-colors flex flex-col items-center gap-1"
-        >
-          <Droplet size={18} />
-          <span className="font-mono text-[10px] uppercase tracking-[0.2em]">+500 ml</span>
-          <span className="font-body text-xs text-ink-muted">water</span>
-        </button>
-        <button
-          onClick={() => addCoffeeEntry({ qty: 1, unit: "cup" })}
-          className="border-2 border-ink p-3 hover:bg-ink hover:text-paper transition-colors flex flex-col items-center gap-1"
-        >
-          <Coffee size={18} />
-          <span className="font-mono text-[10px] uppercase tracking-[0.2em]">+1 cup</span>
-          <span className="font-body text-xs text-ink-muted">coffee</span>
-        </button>
-        <button
-          onClick={() => setSteps((steps || 0) + 1000)}
-          className="border-2 border-ink p-3 hover:bg-ink hover:text-paper transition-colors flex flex-col items-center gap-1"
-        >
-          <Footprints size={18} />
-          <span className="font-mono text-[10px] uppercase tracking-[0.2em]">+1k</span>
-          <span className="font-body text-xs text-ink-muted">steps</span>
-        </button>
-        <button
+        <QuickTile
+          icon={Droplet}
+          label="+1 cup"
+          sub="water"
+          confirmed={confirmed === "water-1"}
+          onClick={() => {
+            addWaterEntry({ qty: 1, unit: "cup" });
+            flashConfirm("water-1");
+          }}
+        />
+        <QuickTile
+          icon={Droplet}
+          label="+500 ml"
+          sub="water"
+          confirmed={confirmed === "water-500"}
+          onClick={() => {
+            addWaterEntry({ qty: 500, unit: "ml" });
+            flashConfirm("water-500");
+          }}
+        />
+        <QuickTile
+          icon={Coffee}
+          label="+1 cup"
+          sub="coffee"
+          confirmed={confirmed === "coffee"}
+          onClick={() => {
+            addCoffeeEntry({ qty: 1, unit: "cup" });
+            flashConfirm("coffee");
+          }}
+        />
+        <QuickTile
+          icon={Footprints}
+          label="+1k"
+          sub="steps"
+          confirmed={confirmed === "steps"}
+          onClick={() => {
+            setSteps((steps || 0) + 1000);
+            flashConfirm("steps");
+          }}
+        />
+        <QuickTile
+          emoji="⚖️"
+          label="Weight"
+          sub="log"
+          active={open === "weight"}
+          confirmed={confirmed === "weight"}
           onClick={() => setOpen(open === "weight" ? null : "weight")}
-          className={`border-2 border-ink p-3 transition-colors flex flex-col items-center gap-1 ${
-            open === "weight" ? "bg-ink text-paper" : "hover:bg-ink hover:text-paper"
-          }`}
-        >
-          <span className="text-base">⚖️</span>
-          <span className="font-mono text-[10px] uppercase tracking-[0.2em]">Weight</span>
-          <span className={`font-body text-xs ${open === "weight" ? "text-paper/70" : "text-ink-muted"}`}>
-            log
-          </span>
-        </button>
-        <button
+        />
+        <QuickTile
+          icon={Clock}
+          label="Sleep"
+          sub={sleep?.hours ? `${sleep.hours.toFixed(1)} h` : "log"}
+          active={open === "sleep"}
+          confirmed={confirmed === "sleep"}
           onClick={() => setOpen(open === "sleep" ? null : "sleep")}
-          className={`border-2 border-ink p-3 transition-colors flex flex-col items-center gap-1 ${
-            open === "sleep" ? "bg-ink text-paper" : "hover:bg-ink hover:text-paper"
-          }`}
-        >
-          <Clock size={18} />
-          <span className="font-mono text-[10px] uppercase tracking-[0.2em]">Sleep</span>
-          <span className={`font-body text-xs ${open === "sleep" ? "text-paper/70" : "text-ink-muted"}`}>
-            {sleep?.hours ? `${sleep.hours.toFixed(1)} h` : "log"}
-          </span>
-        </button>
+        />
       </div>
 
       {open === "weight" && (
@@ -1086,5 +1105,42 @@ function QuickLog({
         </div>
       )}
     </Card>
+  );
+}
+
+// QuickTile — single Quick-Log entry button. When `confirmed` is true,
+// swaps the icon/label for a tick + "Done" so the user gets immediate
+// visual feedback that their tap registered.
+function QuickTile({ icon: Icon, emoji, label, sub, active, confirmed, onClick }) {
+  const baseCls =
+    "border-2 border-ink p-3 transition-all flex flex-col items-center gap-1 relative overflow-hidden";
+  const stateCls = confirmed
+    ? "bg-good text-paper border-good"
+    : active
+      ? "bg-ink text-paper"
+      : "hover:bg-ink hover:text-paper";
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-live="polite"
+      className={`${baseCls} ${stateCls}`}
+    >
+      {confirmed ? (
+        <>
+          <CheckCircle2 size={20} />
+          <span className="font-mono text-[10px] uppercase tracking-[0.25em]">Logged</span>
+          <span className="font-body text-xs">tap done ✓</span>
+        </>
+      ) : (
+        <>
+          {Icon ? <Icon size={18} /> : <span className="text-base">{emoji}</span>}
+          <span className="font-mono text-[10px] uppercase tracking-[0.2em]">{label}</span>
+          <span className={`font-body text-xs ${active ? "text-paper/70" : confirmed ? "" : "text-ink-muted"}`}>
+            {sub}
+          </span>
+        </>
+      )}
+    </button>
   );
 }
