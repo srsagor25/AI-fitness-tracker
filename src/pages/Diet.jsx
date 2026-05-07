@@ -48,7 +48,6 @@ export function Diet() {
     dayTotals,
     dailyTargetKcal,
     todaysWorkoutKcal,
-    apiKey,
     showSnack,
     shouldSuggestLightDinner,
     clearDay,
@@ -337,7 +336,6 @@ export function Diet() {
       {photoModal && (
         <PhotoMealModal
           slot={photoModal.slot}
-          apiKey={apiKey}
           onClose={() => setPhotoModal(null)}
           onConfirm={(m) => logPhotoMeal(photoModal.slot, m)}
         />
@@ -345,7 +343,6 @@ export function Diet() {
       {eatOutModal && (
         <EatOutModal
           slot={eatOutModal.slot}
-          apiKey={apiKey}
           target={{ kcal: dailyTargetKcal, protein: profile.proteinTarget }}
           logged={dayTotals}
           eatingWindow={profile.eatingWindow}
@@ -569,7 +566,7 @@ function CustomMealModal({ slot, onClose, onSave }) {
   );
 }
 
-function PhotoMealModal({ slot, apiKey, onClose, onConfirm }) {
+function PhotoMealModal({ slot, onClose, onConfirm }) {
   const [preview, setPreview] = useState(null);
   const [base64, setBase64] = useState(null);
   const [mediaType, setMediaType] = useState("image/jpeg");
@@ -594,10 +591,6 @@ function PhotoMealModal({ slot, apiKey, onClose, onConfirm }) {
   }
 
   async function analyze() {
-    if (!apiKey) {
-      setError("Add your Anthropic API key on the Profile tab first.");
-      return;
-    }
     if (!base64) {
       setError("Choose a photo first.");
       return;
@@ -605,7 +598,7 @@ function PhotoMealModal({ slot, apiKey, onClose, onConfirm }) {
     setBusy(true);
     setError(null);
     try {
-      const r = await analyzeFoodPhoto({ apiKey, base64, mediaType, quantity });
+      const r = await analyzeFoodPhoto({ base64, mediaType, quantity });
       setResult(r);
     } catch (e) {
       setError(e.message);
@@ -637,14 +630,6 @@ function PhotoMealModal({ slot, apiKey, onClose, onConfirm }) {
       }
     >
       <div className="space-y-3">
-        {!apiKey && (
-          <div className="border-2 border-accent bg-accent/5 px-3 py-2 flex items-start gap-2">
-            <AlertTriangle size={14} className="text-accent mt-0.5 shrink-0" />
-            <p className="font-body text-sm">
-              No API key set. Add an Anthropic API key on the <strong>Profile</strong> tab.
-            </p>
-          </div>
-        )}
         <input
           ref={inputRef}
           type="file"
@@ -700,7 +685,7 @@ function PhotoMealModal({ slot, apiKey, onClose, onConfirm }) {
   );
 }
 
-function EatOutModal({ slot, apiKey, target, logged, eatingWindow, onClose, onPick }) {
+function EatOutModal({ slot, target, logged, eatingWindow, onClose, onPick }) {
   const [location, setLocation] = useState("");
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
@@ -708,15 +693,10 @@ function EatOutModal({ slot, apiKey, target, logged, eatingWindow, onClose, onPi
   const [error, setError] = useState(null);
 
   async function go() {
-    if (!apiKey) {
-      setError("Add your Anthropic API key on the Profile tab first.");
-      return;
-    }
     setBusy(true);
     setError(null);
     try {
       const r = await suggestEatOut({
-        apiKey,
         target,
         logged: { kcal: logged.kcal, protein: logged.protein },
         slot,
@@ -746,14 +726,6 @@ function EatOutModal({ slot, apiKey, target, logged, eatingWindow, onClose, onPi
       }
     >
       <div className="space-y-3">
-        {!apiKey && (
-          <div className="border-2 border-accent bg-accent/5 px-3 py-2 flex items-start gap-2">
-            <AlertTriangle size={14} className="text-accent mt-0.5 shrink-0" />
-            <p className="font-body text-sm">
-              Set your Anthropic API key on the <strong>Profile</strong> tab.
-            </p>
-          </div>
-        )}
         <Field label="Restaurant or cuisine">
           <TextInput
             value={location}

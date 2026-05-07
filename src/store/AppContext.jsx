@@ -28,7 +28,8 @@ export function AppProvider({ children }) {
 
   // ----- Profile -----
   const [profile, setProfile] = useState(() => load("profile:current", cloneTemplate(TEMPLATES.saidur)));
-  const [apiKey, setApiKey] = useState(() => load("apiKey:anthropic", ""));
+  // (BYOK removed — AI calls now go through /api/* serverless routes that
+  // hold the provider key in Vercel env vars. Nothing here in the browser.)
 
   // ----- Per-day data -----
   const [meals, setMeals] = useState(() => load(`meals:${dateKey}`, blankMeals()));
@@ -138,7 +139,6 @@ export function AppProvider({ children }) {
 
   // Persist
   useEffect(() => save("profile:current", profile), [profile]);
-  useEffect(() => save("apiKey:anthropic", apiKey), [apiKey]);
   useEffect(() => save(`meals:${dateKey}`, meals), [meals, dateKey]);
   useEffect(() => save(`cheats:${dateKey}`, cheats), [cheats, dateKey]);
   useEffect(() => save(`coffee:${dateKey}`, coffeeLog), [coffeeLog, dateKey]);
@@ -813,7 +813,6 @@ export function AppProvider({ children }) {
   const value = {
     // profile
     profile, setProfile, updateProfile, selectProfileTemplate,
-    apiKey, setApiKey,
     // day data
     dateKey,
     meals, addMealToSlot, removeMealFromSlot,

@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { useApp } from "../store/AppContext.jsx";
 import { Card, CardHeader, Stat } from "../components/ui/Card.jsx";
 import { Button } from "../components/ui/Button.jsx";
@@ -6,21 +5,18 @@ import { Field, TextInput, Select, Chip } from "../components/ui/Field.jsx";
 import { TEMPLATES } from "../store/profiles.js";
 import { BUILTIN_PROGRAMS } from "../store/defaults.js";
 import { bmr, tdee, dailyTarget, suggestedProtein } from "../lib/calories.js";
-import { Eye, EyeOff, Lightbulb, Dumbbell } from "lucide-react";
+import { Lightbulb, Dumbbell } from "lucide-react";
 
 export function Profile() {
   const {
     profile,
     updateProfile,
     selectProfileTemplate,
-    apiKey,
-    setApiKey,
     activeProgramId,
     setActiveProgramId,
     customPrograms,
     showSnack,
   } = useApp();
-  const [showKey, setShowKey] = useState(false);
 
   function update(patch) {
     updateProfile(patch);
@@ -250,32 +246,6 @@ export function Profile() {
         showSnack={showSnack}
       />
 
-      <Card>
-        <CardHeader
-          kicker="API"
-          title="Anthropic API Key"
-          subtitle="Required for photo macros and eat-out suggestions. Stored only in your browser."
-        />
-        <Field label="API key">
-          <div className="flex gap-2">
-            <TextInput
-              type={showKey ? "text" : "password"}
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder="sk-ant-..."
-            />
-            <Button variant="outline" onClick={() => setShowKey((v) => !v)}>
-              {showKey ? <EyeOff size={12} /> : <Eye size={12} />}
-              {showKey ? "Hide" : "Show"}
-            </Button>
-          </div>
-        </Field>
-        <p className="font-body italic text-ink-muted text-sm mt-2">
-          Key never leaves your browser — Diet calls Anthropic directly with the
-          dangerous-direct-browser-access header. Fine for personal use, not for public
-          deploys.
-        </p>
-      </Card>
 
       <Card>
         <CardHeader kicker="Day Types" title="Your day-type targets" />

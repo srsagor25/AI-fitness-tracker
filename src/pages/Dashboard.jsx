@@ -261,8 +261,7 @@ export function Dashboard({ setTab }) {
           targetTab,
         };
       }
-      // Caught up if there's at least one dose and the schedule has reminder
-      // times (otherwise we'd never enter this branch anyway).
+      // Caught up — at least one dose was logged today.
       if (dosesInCat.length > 0) {
         return {
           id: `${category}-done`,
@@ -272,6 +271,33 @@ export function Dashboard({ setTab }) {
           detail: `${dosesInCat.length} dose${dosesInCat.length === 1 ? "" : "s"} taken today`,
           countdown: null,
           urgency: "done",
+          targetTab,
+        };
+      }
+      // Items configured but no reminder times AND no doses logged → still
+      // surface a reminder so the user remembers to take/log them.
+      const dueTodayItems = itemsInCat.filter((m) => {
+        const every = Math.max(1, Number(m.repeatEveryDays) || 1);
+        if (every === 1) return true;
+        const start = m.startDate || nowDate.toISOString().slice(0, 10);
+        const today = nowDate.toISOString().slice(0, 10);
+        const days = Math.floor((new Date(today) - new Date(start)) / 86400000);
+        return days >= 0 && days % every === 0;
+      });
+      if (dueTodayItems.length > 0) {
+        const noTimesYet = dueTodayItems.every(
+          (m) => !m.reminderTimes || m.reminderTimes.length === 0,
+        );
+        return {
+          id: `${category}-pending`,
+          icon: Pill,
+          domain: category,
+          label: `${dueTodayItems.length} ${label.toLowerCase()} due today`,
+          detail: noTimesYet
+            ? `${dueTodayItems.map((m) => m.name).slice(0, 3).join(", ")}${dueTodayItems.length > 3 ? ` +${dueTodayItems.length - 3} more` : ""} · tap to log or set times`
+            : `${dueTodayItems.map((m) => m.name).slice(0, 3).join(", ")}${dueTodayItems.length > 3 ? ` +${dueTodayItems.length - 3} more` : ""}`,
+          countdown: null,
+          urgency: "info",
           targetTab,
         };
       }

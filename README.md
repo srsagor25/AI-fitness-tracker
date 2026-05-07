@@ -7,7 +7,19 @@ A unified diet + training tracker that merges the original **Diet & Grocery Mana
 - React 18 + Vite
 - Tailwind CSS 3
 - lucide-react icons
-- localStorage (no backend; prefix `aift:`)
+- localStorage for app data (prefix `aift:`)
+- Vercel serverless functions in `/api/` for AI calls (photo macros + eat-out suggestions)
+
+## AI provider setup (Vercel)
+
+Photo macros (`/api/analyze-photo`) and eat-out suggestions (`/api/suggest-eatout`) call an AI provider server-side, so the API key lives only in Vercel environment variables — never in the browser. Two providers are supported, set whichever you have:
+
+| Variable | Provider | Notes |
+|---|---|---|
+| `OPENAI_API_KEY` | OpenAI | Default model `gpt-4o-mini`; override via `OPENAI_MODEL` |
+| `GEMINI_API_KEY` | Google Gemini | Default model `gemini-2.0-flash` (free-tier compatible); override via `GEMINI_MODEL` |
+
+If both are set, OpenAI wins. Add the variable in Vercel project → Settings → Environment Variables → redeploy.
 
 ## Run
 
