@@ -23,6 +23,8 @@ import {
   TrendingUp,
   Target,
   Zap,
+  Save,
+  Trash2,
 } from "lucide-react";
 
 const SEC_PER_REP = 3;
@@ -818,10 +820,17 @@ function SetRow({ index, entry, defaultReps, placeholderWeight, onLog, onUnlog }
   }, [entry, defaultReps, placeholderWeight]);
 
   const done = !!entry;
+  // The user can edit logged sets after the fact. "dirty" means the inputs
+  // diverge from the saved entry — show a Save button to commit the update.
+  const dirty =
+    done &&
+    (Number(weight) !== Number(entry.weight) || Number(reps) !== Number(entry.reps));
 
   return (
     <div
-      className={`flex items-center gap-2 border ${done ? "border-good bg-good/5" : "border-ink/40"} px-2 py-1.5`}
+      className={`flex items-center gap-2 border px-2 py-1.5 ${
+        done ? (dirty ? "border-accent bg-accent/5" : "border-good bg-good/5") : "border-ink/40"
+      }`}
     >
       <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted w-12">
         Set {index + 1}
@@ -830,7 +839,6 @@ function SetRow({ index, entry, defaultReps, placeholderWeight, onLog, onUnlog }
         type="number"
         step="0.5"
         value={weight}
-        disabled={done}
         placeholder={placeholderWeight ? String(placeholderWeight) : "kg"}
         onChange={(e) => setWeight(e.target.value)}
         className="!w-20 !py-1 !text-sm"
@@ -841,27 +849,35 @@ function SetRow({ index, entry, defaultReps, placeholderWeight, onLog, onUnlog }
       <TextInput
         type="number"
         value={reps}
-        disabled={done}
         onChange={(e) => setReps(e.target.value)}
         className="!w-16 !py-1 !text-sm"
       />
-      {done ? (
+      {!done && (
+        <IconButton
+          onClick={() =>
+            onLog({ weight: Number(weight) || 0, reps: Number(reps) || 0 })
+          }
+          aria-label="Log set"
+        >
+          <Check size={14} />
+        </IconButton>
+      )}
+      {done && dirty && (
+        <IconButton
+          onClick={() =>
+            onLog({ weight: Number(weight) || 0, reps: Number(reps) || 0 })
+          }
+          aria-label="Update set"
+          className="!border-accent !text-accent hover:!bg-accent hover:!text-paper"
+        >
+          <Save size={14} />
+        </IconButton>
+      )}
+      {done && !dirty && (
         <IconButton
           onClick={onUnlog}
           aria-label="Undo set"
           className="!border-good !text-good hover:!bg-good hover:!text-paper"
-        >
-          <Check size={14} />
-        </IconButton>
-      ) : (
-        <IconButton
-          onClick={() =>
-            onLog({
-              weight: Number(weight) || 0,
-              reps: Number(reps) || 0,
-            })
-          }
-          aria-label="Log set"
         >
           <Check size={14} />
         </IconButton>
