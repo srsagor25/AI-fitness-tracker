@@ -41,6 +41,7 @@ export function AppProvider({ children }) {
 
   // ----- Cross-day logs -----
   const [weightLog, setWeightLog] = useState(() => load("weight:log", []));
+  const [bodyPhotos, setBodyPhotos] = useState(() => load("body:photos", []));
   const [meds, setMeds] = useState(() => load("meds:list", []));
   const [customFoods, setCustomFoods] = useState(() => load("foods:custom", {}));
 
@@ -117,6 +118,7 @@ export function AppProvider({ children }) {
   useEffect(() => save(`dayType:${dateKey}`, dayTypeId), [dayTypeId, dateKey]);
   useEffect(() => save(`meds:taken:${dateKey}`, medsTakenToday), [medsTakenToday, dateKey]);
   useEffect(() => save("weight:log", weightLog), [weightLog]);
+  useEffect(() => save("body:photos", bodyPhotos), [bodyPhotos]);
   useEffect(() => save("meds:list", meds), [meds]);
   useEffect(() => save("foods:custom", customFoods), [customFoods]);
   useEffect(() => save("workout:custom-programs", customPrograms), [customPrograms]);
@@ -389,6 +391,26 @@ export function AppProvider({ children }) {
     setWeightLog((prev) => prev.filter((e) => e.id !== id));
   }
   const latestWeight = weightLog.length ? weightLog[weightLog.length - 1] : null;
+
+  // ----- Body photos -----
+  function addBodyPhoto(payload) {
+    const entry = {
+      id: uid("ph"),
+      date: payload.date || Date.now(),
+      dataUrl: payload.dataUrl,
+      mediaType: payload.mediaType || "image/jpeg",
+      view: payload.view || "front",
+      note: (payload.note || "").trim(),
+      weightKg: payload.weightKg ? Number(payload.weightKg) : null,
+      width: payload.width || null,
+      height: payload.height || null,
+    };
+    setBodyPhotos((prev) => [...prev, entry]);
+    showSnack("Progress photo saved");
+  }
+  function removeBodyPhoto(id) {
+    setBodyPhotos((prev) => prev.filter((p) => p.id !== id));
+  }
 
   // ----- Custom foods (carbs/fat editor) -----
   function updateCustomFood(key, patch) {
@@ -692,6 +714,7 @@ export function AppProvider({ children }) {
     plan, setPlanForDate, clearPlan,
     // body
     weightLog, addWeightEntry, removeWeightEntry, latestWeight,
+    bodyPhotos, addBodyPhoto, removeBodyPhoto,
     // foods overrides
     customFoods, updateCustomFood, resetCustomFood,
     // medications

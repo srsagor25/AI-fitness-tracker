@@ -1,10 +1,30 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useApp } from "../store/AppContext.jsx";
 import { Card, CardHeader, Stat } from "../components/ui/Card.jsx";
 import { Button, IconButton } from "../components/ui/Button.jsx";
-import { Field, TextInput, Chip } from "../components/ui/Field.jsx";
+import { Field, TextInput, Select, Chip } from "../components/ui/Field.jsx";
+import { Modal } from "../components/ui/Modal.jsx";
+import { fileToResizedBase64 } from "../lib/aiVision.js";
 import { bmr, tdee } from "../lib/calories.js";
-import { Plus, Trash2, TrendingDown, TrendingUp, Minus } from "lucide-react";
+import {
+  Plus,
+  Trash2,
+  TrendingDown,
+  TrendingUp,
+  Minus,
+  Camera,
+  Loader2,
+  X,
+  Image as ImageIcon,
+  ArrowLeftRight,
+} from "lucide-react";
+
+const VIEW_OPTIONS = [
+  { id: "front", label: "Front", emoji: "🧍" },
+  { id: "side", label: "Side", emoji: "↔️" },
+  { id: "back", label: "Back", emoji: "🔄" },
+  { id: "flex", label: "Flex / pose", emoji: "💪" },
+];
 
 const WINDOWS = [
   { id: 7, label: "7 days" },
@@ -14,10 +34,21 @@ const WINDOWS = [
 ];
 
 export function Body() {
-  const { profile, weightLog, addWeightEntry, removeWeightEntry, latestWeight } = useApp();
+  const {
+    profile,
+    weightLog,
+    addWeightEntry,
+    removeWeightEntry,
+    latestWeight,
+    bodyPhotos,
+    addBodyPhoto,
+    removeBodyPhoto,
+  } = useApp();
   const [draftWeight, setDraftWeight] = useState("");
   const [draftNote, setDraftNote] = useState("");
   const [windowDays, setWindowDays] = useState(30);
+  const [photoFilter, setPhotoFilter] = useState("all");
+  const [lightboxId, setLightboxId] = useState(null);
 
   const sorted = useMemo(
     () => [...weightLog].sort((a, b) => a.date - b.date),
@@ -155,6 +186,29 @@ export function Body() {
           calorie burn stay accurate.
         </p>
       </Card>
+
+      <PhotoSection
+        photos={bodyPhotos}
+        latestWeight={latestWeight}
+        filter={photoFilter}
+        setFilter={setPhotoFilter}
+        onUpload={addBodyPhoto}
+        onOpen={(id) => setLightboxId(id)}
+      />
+
+      {lightboxId && (
+        <PhotoLightbox
+          photos={bodyPhotos}
+          startId={lightboxId}
+          onClose={() => setLightboxId(null)}
+          onDelete={(id) => {
+            if (confirm("Delete this photo?")) {
+              removeBodyPhoto(id);
+              setLightboxId(null);
+            }
+          }}
+        />
+      )}
 
       <Card>
         <CardHeader kicker="Log" title="History" />
@@ -315,5 +369,361 @@ function WeightChart({ entries }) {
         })}
       </text>
     </svg>
+  );
+}
+
+function bytesFromDataUrl(dataUrl) {
+  if (!dataUrl) return 0;
+  // Each base64 char encodes 6 bits → ~3/4 byte. Strip header before counting.
+  const i = dataUrl.indexOf(",");
+  const len = i >= 0 ? dataUrl.length - i - 1 : dataUrl.length;
+  return Math.floor((len * 3) / 4);
+}
+
+function fmtKB(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function PhotoSection({ photos, latestWeight, filter, setFilter, onUpload, onOpen }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const [pending, setPending] = useState(null); // { dataUrl, mediaType, w, h }
+  const [view, setView] = useState("front");
+  const [linkWeight, setLinkWeight] = useState(true);
+  const [note, setNote] = useState("");
+  const [draftWeight, setDraftWeight] = useState("");
+  const inputRef = useRef(null);
+
+  const totalBytes = useMemo(
+    () => photos.reduce((s, p) => s + bytesFromDataUrl(p.dataUrl), 0),
+    [photos],
+  );
+  const filtered = useMemo(() => {
+    const sorted = [...photos].sort((a, b) => b.date - a.date);
+    if (filter === "all") return sorted;
+    return sorted.filter((p) => p.view === filter);
+  }, [photos, filter]);
+
+  async function handleFile(file) {
+    if (!file) return;
+    setError(null);
+    setBusy(true);
+    try {
+      const { dataUrl, mediaType, width, height } = await fileToResizedBase64(file, 1024, 0.85);
+      setPending({ dataUrl, mediaType, width, height });
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function commit() {
+    if (!pending) return;
+    onUpload({
+      dataUrl: pending.dataUrl,
+      mediaType: pending.mediaType,
+      width: pending.width,
+      height: pending.height,
+      view,
+      note,
+      weightKg:
+        draftWeight !== ""
+          ? Number(draftWeight)
+          : linkWeight && latestWeight
+            ? latestWeight.weightKg
+            : null,
+    });
+    setPending(null);
+    setNote("");
+    setDraftWeight("");
+  }
+
+  function cancelPending() {
+    setPending(null);
+    setNote("");
+    setDraftWeight("");
+  }
+
+  return (
+    <Card>
+      <CardHeader
+        kicker="Progress"
+        title="Body Photos"
+        subtitle={
+          photos.length === 0
+            ? "Upload your first photo to start tracking visual progress."
+            : `${photos.length} photo${photos.length === 1 ? "" : "s"} · ${fmtKB(totalBytes)} stored locally`
+        }
+        right={
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => inputRef.current?.click()}
+            disabled={busy}
+          >
+            {busy ? <Loader2 size={12} className="animate-spin" /> : <Camera size={12} />}
+            {busy ? "Processing…" : "Add Photo"}
+          </Button>
+        }
+      />
+
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        onChange={(e) => handleFile(e.target.files?.[0])}
+        className="hidden"
+      />
+
+      {error && (
+        <div className="border-2 border-accent bg-accent/5 px-3 py-2 mb-3 font-body text-sm text-accent">
+          {error}
+        </div>
+      )}
+
+      {totalBytes > 4 * 1024 * 1024 && (
+        <div className="border-2 border-accent bg-accent/5 px-3 py-2 mb-3 font-body text-sm text-accent">
+          Storage usage at {fmtKB(totalBytes)} of ~5 MB. Consider deleting older photos.
+        </div>
+      )}
+
+      {pending && (
+        <div className="border-2 border-good bg-good/5 p-3 mb-4 space-y-3">
+          <div className="flex items-center gap-2 mb-1">
+            <ImageIcon size={14} className="text-good" />
+            <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-good">
+              Confirm upload
+            </span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <img
+              src={pending.dataUrl}
+              alt="Preview"
+              className="border-2 border-ink w-full max-h-64 object-contain bg-ink/5"
+            />
+            <div className="md:col-span-2 space-y-3">
+              <Field label="View">
+                <Select value={view} onChange={(e) => setView(e.target.value)}>
+                  {VIEW_OPTIONS.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.emoji} {v.label}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label={`Weight (kg) — leave blank to ${latestWeight ? `use latest ${latestWeight.weightKg}` : "skip"}`}>
+                <TextInput
+                  type="number"
+                  step="0.1"
+                  value={draftWeight}
+                  onChange={(e) => setDraftWeight(e.target.value)}
+                  placeholder={latestWeight ? String(latestWeight.weightKg) : ""}
+                />
+              </Field>
+              <Field label="Note (optional)">
+                <TextInput
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  placeholder="e.g. morning, post-workout, week 4 cut"
+                />
+              </Field>
+              <div className="flex gap-2 justify-end">
+                <Button variant="outline" size="sm" onClick={cancelPending}>
+                  Cancel
+                </Button>
+                <Button variant="primary" size="sm" onClick={commit}>
+                  Save photo
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {photos.length > 0 && (
+        <>
+          <div className="flex flex-wrap gap-2 mb-3">
+            <button
+              onClick={() => setFilter("all")}
+              className={`px-3 py-1.5 border-2 font-mono text-[10px] uppercase tracking-[0.2em] ${
+                filter === "all" ? "bg-ink text-paper border-ink" : "border-ink hover:bg-ink hover:text-paper"
+              }`}
+            >
+              All ({photos.length})
+            </button>
+            {VIEW_OPTIONS.map((v) => {
+              const c = photos.filter((p) => p.view === v.id).length;
+              if (c === 0) return null;
+              return (
+                <button
+                  key={v.id}
+                  onClick={() => setFilter(v.id)}
+                  className={`px-3 py-1.5 border-2 font-mono text-[10px] uppercase tracking-[0.2em] ${
+                    filter === v.id ? "bg-ink text-paper border-ink" : "border-ink hover:bg-ink hover:text-paper"
+                  }`}
+                >
+                  {v.emoji} {v.label} ({c})
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+            {filtered.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => onOpen(p.id)}
+                className="border-2 border-ink overflow-hidden text-left hover:border-accent transition-colors"
+              >
+                <div className="aspect-[3/4] bg-ink/5">
+                  <img
+                    src={p.dataUrl}
+                    alt={p.view}
+                    className="w-full h-full object-cover"
+                    loading="lazy"
+                  />
+                </div>
+                <div className="p-2 border-t border-ink/30 bg-paper">
+                  <div className="font-mono text-[9px] uppercase tracking-[0.2em] text-ink-muted flex items-center justify-between">
+                    <span>
+                      {new Date(p.date).toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                        year: "2-digit",
+                      })}
+                    </span>
+                    <Chip>{VIEW_OPTIONS.find((v) => v.id === p.view)?.emoji || "🧍"}</Chip>
+                  </div>
+                  {p.weightKg && (
+                    <div className="font-display text-base font-bold mt-1">{p.weightKg} kg</div>
+                  )}
+                  {p.note && (
+                    <div className="font-body text-xs italic text-ink-muted mt-0.5 truncate">
+                      {p.note}
+                    </div>
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </Card>
+  );
+}
+
+function PhotoLightbox({ photos, startId, onClose, onDelete }) {
+  const sorted = useMemo(() => [...photos].sort((a, b) => a.date - b.date), [photos]);
+  const startIdx = sorted.findIndex((p) => p.id === startId);
+  const [idx, setIdx] = useState(Math.max(0, startIdx));
+  const [compareIdx, setCompareIdx] = useState(null);
+
+  const photo = sorted[idx];
+  const compare = compareIdx != null ? sorted[compareIdx] : null;
+
+  if (!photo) return null;
+
+  return (
+    <Modal open onClose={onClose} title="Body photo" maxWidth="max-w-5xl">
+      <div className="space-y-3">
+        {compare ? (
+          <div className="grid grid-cols-2 gap-3">
+            <PhotoPanel p={compare} label="Compare" />
+            <PhotoPanel p={photo} label="Current" />
+          </div>
+        ) : (
+          <PhotoPanel p={photo} label="" />
+        )}
+
+        <div className="flex flex-wrap gap-2 items-center justify-between border-t-2 border-ink pt-3">
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIdx(Math.max(0, idx - 1))}
+              disabled={idx === 0}
+            >
+              ← Older
+            </Button>
+            <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted">
+              {idx + 1} / {sorted.length}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIdx(Math.min(sorted.length - 1, idx + 1))}
+              disabled={idx === sorted.length - 1}
+            >
+              Newer →
+            </Button>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Select
+              value={compareIdx == null ? "" : String(compareIdx)}
+              onChange={(e) =>
+                setCompareIdx(e.target.value === "" ? null : Number(e.target.value))
+              }
+              className="!text-xs"
+            >
+              <option value="">Compare with…</option>
+              {sorted.map((p, i) => {
+                if (i === idx) return null;
+                return (
+                  <option key={p.id} value={i}>
+                    {new Date(p.date).toLocaleDateString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                      year: "numeric",
+                    })}
+                    {p.weightKg ? ` · ${p.weightKg}kg` : ""} · {p.view}
+                  </option>
+                );
+              })}
+            </Select>
+            {compare && (
+              <Button variant="outline" size="sm" onClick={() => setCompareIdx(null)}>
+                <X size={12} /> End compare
+              </Button>
+            )}
+            <Button variant="danger" size="sm" onClick={() => onDelete(photo.id)}>
+              <Trash2 size={12} /> Delete
+            </Button>
+          </div>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function PhotoPanel({ p, label }) {
+  return (
+    <div className="border-2 border-ink p-2 bg-paper">
+      <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted mb-2 flex items-center justify-between">
+        <span>{label}</span>
+        <span>
+          {new Date(p.date).toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          })}
+        </span>
+      </div>
+      <img
+        src={p.dataUrl}
+        alt={p.view}
+        className="w-full max-h-[60vh] object-contain bg-ink/5"
+      />
+      <div className="mt-2 flex items-center gap-2 flex-wrap">
+        <Chip>
+          {VIEW_OPTIONS.find((v) => v.id === p.view)?.emoji || "🧍"} {p.view}
+        </Chip>
+        {p.weightKg && <Chip color="#3b6aa3">{p.weightKg} kg</Chip>}
+        {p.note && <span className="font-body text-sm italic">{p.note}</span>}
+      </div>
+    </div>
   );
 }
