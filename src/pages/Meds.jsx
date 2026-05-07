@@ -36,13 +36,55 @@ function todayHM(d = new Date()) {
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
-function minutesUntil(hhmm) {
+function todayDateKey(d = new Date()) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${dd}`;
+}
+
+function daysBetween(aKey, bKey) {
+  const a = new Date(aKey);
+  const b = new Date(bKey);
+  return Math.floor((b - a) / 86400000);
+}
+
+// Returns true if a medication should fire today based on its repeat cycle.
+function isDueToday(med, today = new Date()) {
+  const every = Math.max(1, Number(med.repeatEveryDays) || 1);
+  if (every === 1) return true;
+  const start = med.startDate || todayDateKey(today);
+  const days = daysBetween(start, todayDateKey(today));
+  if (days < 0) return false; // before start
+  return days % every === 0;
+}
+
+function nextDueDate(med, from = new Date()) {
+  const every = Math.max(1, Number(med.repeatEveryDays) || 1);
+  if (every === 1) return from;
+  const start = med.startDate || todayDateKey(from);
+  const startD = new Date(start);
+  const today = new Date(from);
+  today.setHours(0, 0, 0, 0);
+  if (today < startD) return startD;
+  const days = Math.floor((today - startD) / 86400000);
+  const remainder = days % every;
+  if (remainder === 0) return today;
+  const next = new Date(today);
+  next.setDate(next.getDate() + (every - remainder));
+  return next;
+}
+
+function minutesUntil(hhmm, due = new Date()) {
   if (!hhmm) return Infinity;
   const [h, m] = hhmm.split(":").map(Number);
   const now = new Date();
-  const target = new Date(now);
+  const target = new Date(due);
   target.setHours(h, m, 0, 0);
-  if (target < now) target.setDate(target.getDate() + 1);
+  if (target < now) {
+    // If the same-day target has passed, push to next due day
+    target.setDate(target.getDate() + 1);
+  }
   return Math.round((target - now) / 60000);
 }
 
@@ -56,7 +98,8 @@ export function Meds() {
   );
 
   // Reminder ticker — checks every 30s if any reminder time matches now (±1m)
-  // and fires a browser notification, deduped by med+time+date.
+  // and fires a browser notification, deduped by med+time+date. Skips meds
+  // not due today based on their repeatEveryDays cycle.
   useEffect(() => {
     if (notifPermission !== "granted") return;
     const fired = new Set();
@@ -65,6 +108,7 @@ export function Meds() {
       const hm = todayHM(now);
       const day = now.toISOString().slice(0, 10);
       for (const m of meds) {
+        if (!isDueToday(m, now)) continue;
         for (const t of m.reminderTimes || []) {
           const key = `${day}|${m.id}|${t}`;
           if (hm === t && !fired.has(key)) {
@@ -99,14 +143,28 @@ export function Meds() {
       unit: "tablets",
       notes: "",
       reminderTimes: [],
+      repeatEveryDays: 1,
+      startDate: todayDateKey(),
     });
   }
 
   const upcomingReminders = useMemo(() => {
     const out = [];
+    const todayD = new Date();
     for (const m of meds) {
+      const dueDate = isDueToday(m, todayD) ? todayD : nextDueDate(m, todayD);
+      const dueDateKey = todayDateKey(dueDate);
+      const isToday = dueDateKey === todayDateKey(todayD);
       for (const t of m.reminderTimes || []) {
-        out.push({ medId: m.id, medName: m.name, time: t, mins: minutesUntil(t) });
+        out.push({
+          medId: m.id,
+          medName: m.name,
+          time: t,
+          mins: minutesUntil(t, dueDate),
+          dueDateKey,
+          isToday,
+          repeatEveryDays: m.repeatEveryDays || 1,
+        });
       }
     }
     return out.sort((a, b) => a.mins - b.mins);
@@ -177,14 +235,22 @@ export function Meds() {
           <CardHeader kicker="Schedule" title="Upcoming Reminders" />
           <ul className="divide-y divide-ink/30 border-y border-ink/30">
             {upcomingReminders.slice(0, 8).map((r, i) => (
-              <li key={i} className="py-2 flex items-center justify-between">
-                <div className="flex items-center gap-2">
+              <li key={i} className="py-2 flex items-center justify-between gap-3 flex-wrap">
+                <div className="flex items-center gap-2 flex-wrap">
                   <Clock size={14} className="text-ink-muted" />
                   <span className="font-body">{r.medName}</span>
+                  {!r.isToday && (
+                    <Chip color="#3b6aa3">
+                      Next: {new Date(r.dueDateKey).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+                    </Chip>
+                  )}
+                  {r.repeatEveryDays > 1 && (
+                    <Chip color="#6b5a3e">Every {r.repeatEveryDays}d</Chip>
+                  )}
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="font-display text-lg font-bold">{r.time}</span>
-                  <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted w-20 text-right">
+                  <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted w-24 text-right">
                     in {r.mins < 60 ? `${r.mins}m` : `${Math.floor(r.mins / 60)}h ${r.mins % 60}m`}
                   </span>
                 </div>
@@ -277,8 +343,21 @@ export function Meds() {
 function MedRow({ med, takenToday, onTake, onEdit, onDelete }) {
   const tDef = MED_TYPES.find((t) => t.id === med.type) || MED_TYPES[0];
   const totalToday = takenToday.reduce((s, d) => s + (d.quantity || 0), 0);
+  const dueToday = isDueToday(med);
+  const every = Math.max(1, Number(med.repeatEveryDays) || 1);
+  const repeatLabel =
+    every === 1
+      ? "Daily"
+      : every === 7
+        ? "Weekly"
+        : every === 14
+          ? "Bi-weekly"
+          : every === 30
+            ? "Monthly"
+            : `Every ${every} days`;
+  const next = dueToday ? null : nextDueDate(med);
   return (
-    <li className="border-2 border-ink p-3">
+    <li className={`border-2 p-3 ${!dueToday ? "border-ink/30 bg-ink/5" : "border-ink"}`}>
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div className="flex items-start gap-3 flex-1 min-w-0">
           <span className="text-3xl">{tDef.icon}</span>
@@ -289,6 +368,12 @@ function MedRow({ med, takenToday, onTake, onEdit, onDelete }) {
               <Chip color="#3b6aa3">
                 {med.defaultQuantity} {med.unit}
               </Chip>
+              <Chip color={every === 1 ? "#6b5a3e" : "#3b6aa3"}>{repeatLabel}</Chip>
+              {!dueToday && next && (
+                <Chip color="#6b5a3e">
+                  Next: {next.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+                </Chip>
+              )}
               {takenToday.length > 0 && (
                 <Chip color="#4a6b3e">
                   <Check size={10} className="inline mr-1" />
@@ -358,8 +443,20 @@ function MedEditorModal({ med, onClose, onSave }) {
       defaultQuantity: Number(draft.defaultQuantity) || 1,
       unit: (draft.unit || "").trim(),
       reminderTimes: [...new Set(draft.reminderTimes || [])].sort(),
+      repeatEveryDays: Math.max(1, Number(draft.repeatEveryDays) || 1),
+      startDate: draft.startDate || todayDateKey(),
     });
   }
+
+  const REPEAT_PRESETS = [
+    { value: 1, label: "Daily" },
+    { value: 2, label: "Every 2 days" },
+    { value: 3, label: "Every 3 days" },
+    { value: 7, label: "Weekly" },
+    { value: 14, label: "Bi-weekly" },
+    { value: 30, label: "Monthly" },
+  ];
+  const isCustomRepeat = !REPEAT_PRESETS.find((r) => r.value === Number(draft.repeatEveryDays));
 
   return (
     <Modal
@@ -418,7 +515,63 @@ function MedEditorModal({ med, onClose, onSave }) {
 
         <div>
           <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted mb-1">
-            Reminders
+            Repeat schedule
+          </div>
+          <div className="flex flex-wrap gap-2 mb-2">
+            {REPEAT_PRESETS.map((r) => (
+              <button
+                key={r.value}
+                type="button"
+                onClick={() => update({ repeatEveryDays: r.value })}
+                className={`px-3 py-1.5 border-2 font-mono text-[10px] uppercase tracking-[0.2em] ${
+                  Number(draft.repeatEveryDays) === r.value
+                    ? "bg-ink text-paper border-ink"
+                    : "border-ink hover:bg-ink hover:text-paper"
+                }`}
+              >
+                {r.label}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => update({ repeatEveryDays: 5 })}
+              className={`px-3 py-1.5 border-2 font-mono text-[10px] uppercase tracking-[0.2em] ${
+                isCustomRepeat ? "bg-ink text-paper border-ink" : "border-ink hover:bg-ink hover:text-paper"
+              }`}
+            >
+              Custom
+            </button>
+          </div>
+          {isCustomRepeat && (
+            <Field label="Every X days">
+              <TextInput
+                type="number"
+                min="1"
+                value={draft.repeatEveryDays}
+                onChange={(e) => update({ repeatEveryDays: Math.max(1, Number(e.target.value) || 1) })}
+              />
+            </Field>
+          )}
+          {Number(draft.repeatEveryDays) > 1 && (
+            <Field label="Start date">
+              <TextInput
+                type="date"
+                value={draft.startDate || todayDateKey()}
+                onChange={(e) => update({ startDate: e.target.value })}
+              />
+            </Field>
+          )}
+          {Number(draft.repeatEveryDays) > 1 && (
+            <p className="font-body text-sm italic text-ink-muted mt-1">
+              Reminders fire every {draft.repeatEveryDays} days starting{" "}
+              {new Date(draft.startDate || todayDateKey()).toLocaleDateString("en-US", { month: "short", day: "numeric" })}.
+            </p>
+          )}
+        </div>
+
+        <div>
+          <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted mb-1">
+            Reminder times (each due day)
           </div>
           <div className="flex gap-2 mb-2">
             <input

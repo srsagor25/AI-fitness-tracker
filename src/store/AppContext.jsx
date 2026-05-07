@@ -65,6 +65,7 @@ export function AppProvider({ children }) {
     return cloneTemplate(TEMPLATES.saidur).groceryTemplate.map((it) => ({ ...it, qty: it.initialQty }));
   });
   const [manualShopping, setManualShopping] = useState(() => load("shopping:manual", []));
+  const [groceryActivity, setGroceryActivity] = useState(() => load("grocery:activity", []));
 
   // ----- Plan -----
   const [plan, setPlan] = useState(() => load("plan:current_week", {}));
@@ -125,6 +126,7 @@ export function AppProvider({ children }) {
   useEffect(() => save("workout:current", currentSession), [currentSession]);
   useEffect(() => save("grocery:items", grocery), [grocery]);
   useEffect(() => save("shopping:manual", manualShopping), [manualShopping]);
+  useEffect(() => save("grocery:activity", groceryActivity), [groceryActivity]);
   useEffect(() => save("plan:current_week", plan), [plan]);
 
   // ----- Profile selection -----
@@ -299,6 +301,14 @@ export function AppProvider({ children }) {
   );
 
   // ----- Diet mutators -----
+  function logGroceryActivity(entries) {
+    if (!entries || entries.length === 0) return;
+    setGroceryActivity((prev) => [
+      ...entries.map((e) => ({ id: uid("act"), ts: Date.now(), ...e })),
+      ...prev,
+    ].slice(0, 500)); // cap to last 500 events
+  }
+
   function addMealToSlot(slot, meal) {
     if (!SLOTS.includes(slot)) slot = "snack";
     const fullMeal = { id: uid("m"), at: Date.now(), ...meal };
@@ -306,13 +316,28 @@ export function AppProvider({ children }) {
     // Decrement inventory
     const deltas = ingredientDeltas(meal.items);
     if (Object.keys(deltas).length) {
+      const activityEntries = [];
       setGrocery((prev) =>
-        prev.map((it) =>
-          deltas[it.key] != null
-            ? { ...it, qty: Math.max(0, it.qty - deltas[it.key]) }
-            : it,
-        ),
+        prev.map((it) => {
+          if (deltas[it.key] != null) {
+            const newQty = Math.max(0, it.qty - deltas[it.key]);
+            const realDelta = newQty - it.qty;
+            if (realDelta !== 0) {
+              activityEntries.push({
+                key: it.key,
+                name: it.name,
+                unit: it.unit,
+                delta: realDelta,
+                reason: "consumed",
+                source: meal.name,
+              });
+            }
+            return { ...it, qty: newQty };
+          }
+          return it;
+        }),
       );
+      logGroceryActivity(activityEntries);
     }
     showSnack(`Logged ${meal.name} to ${slot}`);
   }
@@ -534,16 +559,44 @@ export function AppProvider({ children }) {
 
   // ----- Grocery mutators -----
   function adjustGrocery(key, delta) {
-    setGrocery((prev) => prev.map((it) => (it.key === key ? { ...it, qty: Math.max(0, it.qty + delta) } : it)));
+    setGrocery((prev) => {
+      const it = prev.find((x) => x.key === key);
+      if (!it) return prev;
+      const newQty = Math.max(0, it.qty + delta);
+      const realDelta = newQty - it.qty;
+      if (realDelta !== 0) {
+        logGroceryActivity([
+          { key, name: it.name, unit: it.unit, delta: realDelta, reason: "manual" },
+        ]);
+      }
+      return prev.map((x) => (x.key === key ? { ...x, qty: newQty } : x));
+    });
   }
   function restockGrocery(key) {
-    setGrocery((prev) =>
-      prev.map((it) => (it.key === key ? { ...it, qty: it.qty + (it.packetSize || 1) } : it)),
-    );
+    setGrocery((prev) => {
+      const it = prev.find((x) => x.key === key);
+      if (!it) return prev;
+      const ps = it.packetSize || 1;
+      logGroceryActivity([
+        { key, name: it.name, unit: it.unit, delta: ps, reason: "restock" },
+      ]);
+      return prev.map((x) => (x.key === key ? { ...x, qty: x.qty + ps } : x));
+    });
     showSnack("Restocked");
   }
   function setGroceryQty(key, qty) {
-    setGrocery((prev) => prev.map((it) => (it.key === key ? { ...it, qty: Math.max(0, qty) } : it)));
+    setGrocery((prev) => {
+      const it = prev.find((x) => x.key === key);
+      if (!it) return prev;
+      const target = Math.max(0, qty);
+      const realDelta = target - it.qty;
+      if (realDelta !== 0) {
+        logGroceryActivity([
+          { key, name: it.name, unit: it.unit, delta: realDelta, reason: "manual" },
+        ]);
+      }
+      return prev.map((x) => (x.key === key ? { ...x, qty: target } : x));
+    });
   }
   function saveGroceryItem(item) {
     setGrocery((prev) => {
@@ -560,8 +613,14 @@ export function AppProvider({ children }) {
     setGrocery((prev) => prev.filter((it) => it.key !== key));
   }
   function resetGroceryToTemplate() {
+    logGroceryActivity([
+      { key: "_all", name: "Inventory reset", unit: "", delta: 0, reason: "reset" },
+    ]);
     setGrocery(profile.groceryTemplate.map((it) => ({ ...it, qty: it.initialQty })));
     showSnack("Inventory reset to template");
+  }
+  function clearGroceryActivity() {
+    setGroceryActivity([]);
   }
 
   // ----- Shopping list -----
@@ -627,6 +686,7 @@ export function AppProvider({ children }) {
     // grocery
     grocery, adjustGrocery, restockGrocery, setGroceryQty,
     saveGroceryItem, removeGroceryItem, resetGroceryToTemplate,
+    groceryActivity, clearGroceryActivity,
     manualShopping, addManualShopping, toggleManualShopping, removeManualShopping,
     // plan
     plan, setPlanForDate, clearPlan,
