@@ -1,70 +1,28 @@
 import { useApp } from "../store/AppContext.jsx";
 import { formatLongDate } from "../lib/time.js";
+import { TAB_DEF } from "../App.jsx";
 import {
   Home,
   Utensils,
   Dumbbell,
-  ShoppingBag,
   User,
-  History as HistoryIcon,
+  MoreHorizontal,
   ChevronLeft,
 } from "lucide-react";
 
-// 5 primary destinations for the bottom mobile nav.
-const MOBILE_PRIMARY = [
-  { id: "dashboard", label: "Today", icon: Home },
+const PRIMARY_TABS = [
+  { id: "today", label: "Today", icon: Home },
   { id: "diet", label: "Diet", icon: Utensils },
-  { id: "workout", label: "Train", icon: Dumbbell },
-  { id: "grocery", label: "Pantry", icon: ShoppingBag },
-  { id: "profile", label: "You", icon: User },
+  { id: "activity", label: "Activity", icon: Dumbbell },
+  { id: "body", label: "Body", icon: User },
+  { id: "more", label: "More", icon: MoreHorizontal },
 ];
 
-const TAB_GROUPS = [
-  {
-    label: "Diet · Nutrition",
-    tabs: [
-      { id: "dashboard", label: "Today" },
-      { id: "diet", label: "Diet" },
-      { id: "cheat", label: "Cheat" },
-      { id: "build", label: "Build" },
-      { id: "plan", label: "Plan" },
-      { id: "week", label: "Week" },
-      { id: "foods", label: "Foods" },
-    ],
-  },
-  {
-    label: "Activity",
-    tabs: [
-      { id: "workout", label: "Workout" },
-      { id: "programs", label: "Programs" },
-    ],
-  },
-  {
-    label: "Pantry",
-    tabs: [{ id: "grocery", label: "Grocery" }],
-  },
-  {
-    label: "You",
-    tabs: [
-      { id: "physique", label: "Physique" },
-      { id: "progress", label: "Progress" },
-      { id: "meds", label: "Meds" },
-      { id: "supplements", label: "Supps" },
-      { id: "profile", label: "Profile" },
-    ],
-  },
-  {
-    label: "Log",
-    tabs: [{ id: "history", label: "History" }],
-  },
-];
-
-export function Layout({ tab, setTab, children }) {
+export function Layout({ tab, subTab, setTab, setSubTab, children }) {
   const { profile, snackbar } = useApp();
-
-  // Show a back button on every non-Today tab so phone users always have an
-  // explicit way to step back to the home screen alongside the browser back.
-  const showBack = tab !== "dashboard";
+  const showBack = tab !== "today";
+  const def = TAB_DEF[tab];
+  const hasSubs = def && def.subTabs && def.subTabs.length > 0;
 
   return (
     <div className="min-h-screen bg-paper text-ink">
@@ -79,7 +37,7 @@ export function Layout({ tab, setTab, children }) {
               <button
                 onClick={() => {
                   if (window.history.length > 1) window.history.back();
-                  else setTab("dashboard");
+                  else setTab("today");
                 }}
                 className="md:hidden border-2 border-ink p-2 hover:bg-ink hover:text-paper transition-colors shrink-0"
                 aria-label="Back"
@@ -96,36 +54,50 @@ export function Layout({ tab, setTab, children }) {
           </p>
         </header>
 
-        <nav className="border-y-2 border-ink mb-6 overflow-x-auto">
-          <div className="flex min-w-max md:min-w-0">
-            {TAB_GROUPS.map((g, gi) => {
-              const isLast = gi === TAB_GROUPS.length - 1;
+        {/* Primary nav: 5 top-level tabs */}
+        <nav className="border-y-2 border-ink mb-4 md:mb-6">
+          <div className="grid grid-cols-5">
+            {PRIMARY_TABS.map((t) => {
+              const Icon = t.icon;
+              const active = tab === t.id;
               return (
-                <div
-                  key={g.label}
-                  className={`flex flex-col ${isLast ? "" : "border-r-4 border-ink"}`}
-                  style={{ flex: `${g.tabs.length} 1 0%` }}
+                <button
+                  key={t.id}
+                  onClick={() => setTab(t.id)}
+                  className={`py-3 px-2 font-mono text-[10px] uppercase tracking-[0.18em] inline-flex items-center justify-center gap-1.5 transition-colors ${
+                    active ? "bg-ink text-paper" : "text-ink hover:bg-ink/10"
+                  }`}
                 >
-                  <div className="text-center font-mono text-[9px] uppercase tracking-[0.3em] text-ink-muted py-1.5 border-b border-ink/30 bg-ink/5">
-                    {g.label}
-                  </div>
-                  <div className="flex">
-                    {g.tabs.map((t) => (
-                      <button
-                        key={t.id}
-                        onClick={() => setTab(t.id)}
-                        className={`flex-1 py-3 px-3 font-mono text-[10px] uppercase tracking-[0.18em] transition-colors whitespace-nowrap ${
-                          tab === t.id ? "bg-ink text-paper" : "text-ink hover:bg-ink/10"
-                        }`}
-                      >
-                        {t.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                  <Icon size={14} />
+                  <span className="hidden sm:inline">{t.label}</span>
+                </button>
               );
             })}
           </div>
+
+          {/* Sub-tab pill row — only when current tab has children */}
+          {hasSubs && (
+            <div className="border-t border-ink/30 overflow-x-auto bg-ink/5">
+              <div className="flex min-w-max md:min-w-0">
+                {def.subTabs.map((s) => {
+                  const active = subTab === s.id;
+                  return (
+                    <button
+                      key={s.id}
+                      onClick={() => setSubTab(s.id)}
+                      className={`flex-1 md:flex-none px-4 py-2 font-mono text-[10px] uppercase tracking-[0.18em] whitespace-nowrap transition-colors ${
+                        active
+                          ? "bg-ink text-paper"
+                          : "text-ink hover:bg-ink/10"
+                      }`}
+                    >
+                      {s.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </nav>
 
         <main className="space-y-4 md:space-y-6 pb-24 md:pb-12">{children}</main>
@@ -136,10 +108,10 @@ export function Layout({ tab, setTab, children }) {
         </footer>
       </div>
 
-      {/* Mobile bottom nav — fixed primary destinations */}
+      {/* Mobile bottom nav — same 5 primary destinations */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-paper border-t-2 border-ink z-40 pb-safe">
         <ul className="flex">
-          {MOBILE_PRIMARY.map((m) => {
+          {PRIMARY_TABS.map((m) => {
             const Icon = m.icon;
             const active = tab === m.id;
             return (
