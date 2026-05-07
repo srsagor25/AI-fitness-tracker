@@ -89,17 +89,17 @@ export function Profile() {
           <Field label="Goal description">
             <TextInput value={profile.goal} onChange={(e) => update({ goal: e.target.value })} />
           </Field>
-          <Field label="Eating window (label)">
-            <TextInput value={profile.eatingWindow || ""} onChange={(e) => update({ eatingWindow: e.target.value })} placeholder="e.g. 1 PM – 9 PM (16:8)" />
-          </Field>
-          <Field label="Window start (HH:MM)">
+          <Field
+            label="Eating window start"
+            hint="Used for the live IF timer on Today and as fallback for meal slot times."
+          >
             <TextInput
               type="time"
               value={profile.windowStart || ""}
               onChange={(e) => update({ windowStart: e.target.value })}
             />
           </Field>
-          <Field label="Window end (HH:MM)">
+          <Field label="Eating window end">
             <TextInput
               type="time"
               value={profile.windowEnd || ""}
@@ -169,8 +169,29 @@ export function Profile() {
           <Field label="Height (cm)">
             <TextInput type="number" value={profile.stats?.heightCm || ""} onChange={(e) => updateStats({ heightCm: Number(e.target.value) || 0 })} />
           </Field>
-          <Field label="Weight (kg)">
-            <TextInput type="number" step="0.1" value={profile.stats?.weightKg || ""} onChange={(e) => updateStats({ weightKg: Number(e.target.value) || 0 })} />
+          <Field
+            label="Weight (kg)"
+            hint="Synced from your latest weigh-in on the Progress tab — log new entries there."
+          >
+            <TextInput
+              type="number"
+              step="0.1"
+              value={profile.stats?.weightKg || ""}
+              readOnly
+              className="!bg-ink/5 !cursor-default"
+            />
+          </Field>
+          <Field
+            label="Target weight (kg)"
+            hint="Used by the Physique tab to estimate how long until you reach the goal."
+          >
+            <TextInput
+              type="number"
+              step="0.1"
+              value={profile.targetWeightKg || ""}
+              onChange={(e) => update({ targetWeightKg: e.target.value === "" ? null : Number(e.target.value) })}
+              placeholder="e.g. 80"
+            />
           </Field>
           <Field label="Activity">
             <Select value={profile.activity || "moderate"} onChange={(e) => update({ activity: e.target.value })}>

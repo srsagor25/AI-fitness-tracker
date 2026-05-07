@@ -46,7 +46,8 @@ const TAB_GROUPS = [
   {
     label: "You",
     tabs: [
-      { id: "body", label: "Body" },
+      { id: "physique", label: "Physique" },
+      { id: "progress", label: "Progress" },
       { id: "meds", label: "Meds" },
       { id: "supplements", label: "Supps" },
       { id: "profile", label: "Profile" },

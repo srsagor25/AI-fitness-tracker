@@ -11,7 +11,8 @@ import { Workout } from "./pages/Workout.jsx";
 import { Programs } from "./pages/Programs.jsx";
 import { History } from "./pages/History.jsx";
 import { Grocery } from "./pages/Grocery.jsx";
-import { Body } from "./pages/Body.jsx";
+import { Progress } from "./pages/Progress.jsx";
+import { Physique } from "./pages/Physique.jsx";
 import { Meds } from "./pages/Meds.jsx";
 import { Supplements } from "./pages/Supplements.jsx";
 import { Profile } from "./pages/Profile.jsx";
@@ -64,7 +65,10 @@ export default function App() {
       {tab === "programs" && <Programs />}
       {tab === "history" && <History />}
       {tab === "grocery" && <Grocery />}
-      {tab === "body" && <Body />}
+      {tab === "physique" && <Physique setTab={setTab} />}
+      {tab === "progress" && <Progress />}
+      {/* Back-compat: route old "body" hashes to Progress */}
+      {tab === "body" && <Progress />}
       {tab === "meds" && <Meds />}
       {tab === "supplements" && <Supplements />}
       {tab === "profile" && <Profile />}

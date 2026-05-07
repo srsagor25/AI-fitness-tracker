@@ -455,6 +455,43 @@ export function AppProvider({ children }) {
   }
   const latestWeight = weightLog.length ? weightLog[weightLog.length - 1] : null;
 
+  // ----- Measurements (extends the weight log with body measurements + tags) -----
+  // Shape: { id, date, weightKg, neckCm?, chestCm?, pelvicCm?, hipCm?,
+  //          bicepCm?, thighCm?, bodyFatPct?, bmr?, note, tags: string[] }
+  // Existing weight-only entries continue to work because the optional
+  // measurement fields default to null.
+  function addMeasurement(payload) {
+    const w = Number(payload.weightKg);
+    if (!w && !payload.allowEmptyWeight) {
+      // weight is the canonical anchor; require it unless the caller opts out
+      return;
+    }
+    const entry = {
+      id: uid("m"),
+      date: payload.date || Date.now(),
+      weightKg: w || null,
+      neckCm: payload.neckCm != null && payload.neckCm !== "" ? Number(payload.neckCm) : null,
+      chestCm: payload.chestCm != null && payload.chestCm !== "" ? Number(payload.chestCm) : null,
+      pelvicCm: payload.pelvicCm != null && payload.pelvicCm !== "" ? Number(payload.pelvicCm) : null,
+      hipCm: payload.hipCm != null && payload.hipCm !== "" ? Number(payload.hipCm) : null,
+      bicepCm: payload.bicepCm != null && payload.bicepCm !== "" ? Number(payload.bicepCm) : null,
+      thighCm: payload.thighCm != null && payload.thighCm !== "" ? Number(payload.thighCm) : null,
+      bodyFatPct:
+        payload.bodyFatPct != null && payload.bodyFatPct !== "" ? Number(payload.bodyFatPct) : null,
+      bmr: payload.bmr != null && payload.bmr !== "" ? Number(payload.bmr) : null,
+      note: (payload.note || "").trim(),
+      tags: Array.isArray(payload.tags) ? payload.tags.filter(Boolean) : [],
+    };
+    setWeightLog((prev) => [...prev, entry]);
+    // Mirror latest weight into the profile
+    if (w) setProfile((p) => ({ ...p, stats: { ...p.stats, weightKg: w } }));
+    showSnack(
+      w
+        ? `Logged ${w} kg measurement`
+        : "Measurement logged",
+    );
+  }
+
   // ----- Body photos -----
   function addBodyPhoto(payload) {
     const entry = {
@@ -778,6 +815,7 @@ export function AppProvider({ children }) {
     plan, setPlanForDate, clearPlan,
     // body
     weightLog, addWeightEntry, removeWeightEntry, latestWeight,
+    addMeasurement,
     bodyPhotos, addBodyPhoto, removeBodyPhoto,
     // foods overrides
     customFoods, updateCustomFood, resetCustomFood,
