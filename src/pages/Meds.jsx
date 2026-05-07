@@ -18,13 +18,18 @@ import {
   Clock,
 } from "lucide-react";
 
-const MED_TYPES = [
+export const MED_TYPES = [
   { id: "tablet", label: "Tablet", icon: "💊", iconCmp: Pill, defaultUnit: "tablets" },
   { id: "capsule", label: "Capsule", icon: "💊", iconCmp: Pill, defaultUnit: "capsules" },
+  { id: "gummy", label: "Gummy", icon: "🐻", iconCmp: Pill, defaultUnit: "gummies" },
+  { id: "powder", label: "Powder / Scoop", icon: "🥄", iconCmp: Pill, defaultUnit: "scoops" },
   { id: "drop", label: "Drop", icon: "💧", iconCmp: Droplet, defaultUnit: "drops" },
   { id: "syrup", label: "Syrup / Liquid", icon: "🧴", iconCmp: Droplet, defaultUnit: "ml" },
+  { id: "spray", label: "Spray", icon: "💨", iconCmp: Droplet, defaultUnit: "sprays" },
+  { id: "inhaler", label: "Inhaler", icon: "🫁", iconCmp: Droplet, defaultUnit: "puffs" },
   { id: "vaccine", label: "Vaccine / Injection", icon: "💉", iconCmp: Syringe, defaultUnit: "dose" },
   { id: "topical", label: "Topical / Cream", icon: "🩹", iconCmp: Pill, defaultUnit: "applications" },
+  { id: "therapy", label: "Therapy session", icon: "🧘", iconCmp: Pill, defaultUnit: "sessions" },
   { id: "other", label: "Other", icon: "🩺", iconCmp: Pill, defaultUnit: "units" },
 ];
 
@@ -88,9 +93,14 @@ function minutesUntil(hhmm, due = new Date()) {
   return Math.round((target - now) / 60000);
 }
 
-export function Meds() {
-  const { meds, saveMedication, deleteMedication, medsTakenToday, logDose, unlogDose } =
+export function Meds({ category = "med", title = "Medications", kicker = "Pill, Drop, Vaccine", emptyHint = "Click Add Medication to create one." } = {}) {
+  const { meds: allMeds, saveMedication, deleteMedication, medsTakenToday, logDose, unlogDose } =
     useApp();
+  const meds = useMemo(() => allMeds.filter((m) => (m.category || "med") === category), [allMeds, category]);
+  const todayDoses = useMemo(
+    () => medsTakenToday.filter((d) => (d.category || "med") === category),
+    [medsTakenToday, category],
+  );
   const [editing, setEditing] = useState(null);
   const [doseModal, setDoseModal] = useState(null);
   const [notifPermission, setNotifPermission] = useState(
@@ -138,9 +148,10 @@ export function Meds() {
     setEditing({
       id: uid(),
       name: "",
-      type: "tablet",
+      type: category === "supplement" ? "gummy" : "tablet",
+      category,
       defaultQuantity: 1,
-      unit: "tablets",
+      unit: category === "supplement" ? "gummies" : "tablets",
       notes: "",
       reminderTimes: [],
       repeatEveryDays: 1,
@@ -174,9 +185,9 @@ export function Meds() {
     <>
       <Card>
         <CardHeader
-          kicker="Medications"
-          title="Pill, Drop, Vaccine"
-          subtitle={`${meds.length} medication${meds.length === 1 ? "" : "s"} · ${medsTakenToday.length} dose${medsTakenToday.length === 1 ? "" : "s"} taken today`}
+          kicker={kicker}
+          title={title}
+          subtitle={`${meds.length} ${category}${meds.length === 1 ? "" : "s"} · ${todayDoses.length} dose${todayDoses.length === 1 ? "" : "s"} taken today`}
           right={
             <div className="flex flex-wrap gap-2">
               {notifPermission === "default" && (
@@ -195,7 +206,7 @@ export function Meds() {
                 </Chip>
               )}
               <Button variant="primary" size="sm" onClick={startCreate}>
-                <Plus size={12} /> Add Medication
+                <Plus size={12} /> Add {category === "supplement" ? "Supplement" : "Medication"}
               </Button>
             </div>
           }
@@ -218,7 +229,7 @@ export function Meds() {
               <MedRow
                 key={m.id}
                 med={m}
-                takenToday={medsTakenToday.filter((d) => d.medId === m.id)}
+                takenToday={todayDoses.filter((d) => d.medId === m.id)}
                 onTake={() => setDoseModal(m)}
                 onEdit={() => setEditing({ ...m })}
                 onDelete={() => {
@@ -263,15 +274,15 @@ export function Meds() {
       <Card>
         <CardHeader
           kicker="Today's doses"
-          title={`${medsTakenToday.length} taken`}
+          title={`${todayDoses.length} taken`}
           right={
-            medsTakenToday.length > 0 && (
+            todayDoses.length > 0 && (
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => {
                   if (confirm("Clear today's dose log?")) {
-                    medsTakenToday.forEach((d) => unlogDose(d.id));
+                    todayDoses.forEach((d) => unlogDose(d.id));
                   }
                 }}
               >
@@ -280,11 +291,11 @@ export function Meds() {
             )
           }
         />
-        {medsTakenToday.length === 0 ? (
+        {todayDoses.length === 0 ? (
           <p className="font-body italic text-ink-muted">No doses logged yet today.</p>
         ) : (
           <ul className="divide-y divide-ink/30 border-y border-ink/30">
-            {[...medsTakenToday]
+            {[...todayDoses]
               .sort((a, b) => b.takenAt - a.takenAt)
               .map((d) => {
                 const tDef = MED_TYPES.find((t) => t.id === d.type);

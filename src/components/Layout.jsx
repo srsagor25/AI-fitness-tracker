@@ -1,5 +1,23 @@
 import { useApp } from "../store/AppContext.jsx";
 import { formatLongDate } from "../lib/time.js";
+import {
+  Home,
+  Utensils,
+  Dumbbell,
+  ShoppingBag,
+  User,
+  History as HistoryIcon,
+  ChevronLeft,
+} from "lucide-react";
+
+// 5 primary destinations for the bottom mobile nav.
+const MOBILE_PRIMARY = [
+  { id: "dashboard", label: "Today", icon: Home },
+  { id: "diet", label: "Diet", icon: Utensils },
+  { id: "workout", label: "Train", icon: Dumbbell },
+  { id: "grocery", label: "Pantry", icon: ShoppingBag },
+  { id: "profile", label: "You", icon: User },
+];
 
 const TAB_GROUPS = [
   {
@@ -30,6 +48,7 @@ const TAB_GROUPS = [
     tabs: [
       { id: "body", label: "Body" },
       { id: "meds", label: "Meds" },
+      { id: "supplements", label: "Supps" },
       { id: "profile", label: "Profile" },
     ],
   },
@@ -41,18 +60,37 @@ const TAB_GROUPS = [
 
 export function Layout({ tab, setTab, children }) {
   const { profile, snackbar } = useApp();
+
+  // Show a back button on every non-Today tab so phone users always have an
+  // explicit way to step back to the home screen alongside the browser back.
+  const showBack = tab !== "dashboard";
+
   return (
     <div className="min-h-screen bg-paper text-ink">
-      <div className="max-w-5xl mx-auto px-4 md:px-6 py-6">
-        <header className="border-b-2 border-ink pb-4 mb-6">
-          <div className="flex items-end justify-between text-[10px] tracking-[0.25em] font-mono uppercase text-ink-muted">
-            <div>No. {formatLongDate()}</div>
-            <div>Vol. I — {profile.name}</div>
+      <div className="max-w-5xl mx-auto px-3 md:px-6 py-4 md:py-6">
+        <header className="border-b-2 border-ink pb-3 md:pb-4 mb-4 md:mb-6">
+          <div className="flex items-end justify-between text-[9px] md:text-[10px] tracking-[0.2em] md:tracking-[0.25em] font-mono uppercase text-ink-muted">
+            <div className="truncate">No. {formatLongDate()}</div>
+            <div className="truncate ml-2">Vol. I — {profile.name}</div>
           </div>
-          <h1 className="font-display text-5xl md:text-7xl font-black tracking-tight leading-none mt-2">
-            AI Fitness Tracker
-          </h1>
-          <p className="font-body text-base md:text-lg text-ink-muted mt-2 italic">
+          <div className="flex items-center gap-2 mt-1 md:mt-2">
+            {showBack && (
+              <button
+                onClick={() => {
+                  if (window.history.length > 1) window.history.back();
+                  else setTab("dashboard");
+                }}
+                className="md:hidden border-2 border-ink p-2 hover:bg-ink hover:text-paper transition-colors shrink-0"
+                aria-label="Back"
+              >
+                <ChevronLeft size={16} />
+              </button>
+            )}
+            <h1 className="font-display text-3xl md:text-7xl font-black tracking-tight leading-none">
+              AI Fitness Tracker
+            </h1>
+          </div>
+          <p className="font-body text-sm md:text-lg text-ink-muted mt-2 italic">
             {profile.publicLabel || "Diet, training, recovery — one ledger."}
           </p>
         </header>
@@ -89,16 +127,41 @@ export function Layout({ tab, setTab, children }) {
           </div>
         </nav>
 
-        <main className="space-y-6 pb-24">{children}</main>
+        <main className="space-y-4 md:space-y-6 pb-24 md:pb-12">{children}</main>
 
-        <footer className="mt-12 pt-4 border-t-2 border-ink text-[10px] font-mono uppercase tracking-[0.25em] text-ink-muted flex justify-between">
+        <footer className="mt-8 md:mt-12 pt-4 border-t-2 border-ink text-[9px] md:text-[10px] font-mono uppercase tracking-[0.25em] text-ink-muted flex justify-between">
           <span>AI Fitness Tracker</span>
           <span>Stored locally · {profile.name}</span>
         </footer>
       </div>
 
+      {/* Mobile bottom nav — fixed primary destinations */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-paper border-t-2 border-ink z-40 pb-safe">
+        <ul className="flex">
+          {MOBILE_PRIMARY.map((m) => {
+            const Icon = m.icon;
+            const active = tab === m.id;
+            return (
+              <li key={m.id} className="flex-1">
+                <button
+                  onClick={() => setTab(m.id)}
+                  className={`w-full py-2 px-1 flex flex-col items-center gap-0.5 ${
+                    active ? "bg-ink text-paper" : "text-ink"
+                  }`}
+                >
+                  <Icon size={18} />
+                  <span className="font-mono text-[9px] uppercase tracking-[0.15em]">
+                    {m.label}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </nav>
+
       {snackbar && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 bg-ink text-paper px-4 py-2 font-mono text-[10px] uppercase tracking-[0.25em] shadow-lg border-2 border-ink">
+        <div className="fixed bottom-20 md:bottom-4 left-1/2 -translate-x-1/2 z-50 bg-ink text-paper px-4 py-2 font-mono text-[10px] uppercase tracking-[0.25em] shadow-lg border-2 border-ink whitespace-nowrap max-w-[90vw] truncate">
           {snackbar.msg}
         </div>
       )}

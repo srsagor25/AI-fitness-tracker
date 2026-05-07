@@ -43,7 +43,18 @@ export function dailyTarget(profile) {
   const { goal } = flat(profile);
   if (goal === "cut") return Math.max(1200, t - 500);
   if (goal === "bulk") return t + 300;
+  if (goal === "muscle_build") return t + 400; // larger surplus for muscle gain
   return t;
+}
+
+// Suggested protein per kg for a given goal. Returns g/day given weightKg.
+export function suggestedProtein(profile) {
+  const { goal, weightKg } = flat(profile);
+  const w = Number(weightKg) || 70;
+  if (goal === "muscle_build") return Math.round(w * 2.0); // 2.0 g/kg
+  if (goal === "cut") return Math.round(w * 2.2);          // higher to preserve LBM
+  if (goal === "bulk") return Math.round(w * 1.8);
+  return Math.round(w * 1.6);
 }
 
 export function estimateWorkoutKcal({ durationSec, weightKg, totalVolume }) {

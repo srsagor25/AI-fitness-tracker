@@ -4,11 +4,22 @@ import { Card, CardHeader, Stat } from "../components/ui/Card.jsx";
 import { Button } from "../components/ui/Button.jsx";
 import { Field, TextInput, Select, Chip } from "../components/ui/Field.jsx";
 import { TEMPLATES } from "../store/profiles.js";
-import { bmr, tdee, dailyTarget } from "../lib/calories.js";
-import { Eye, EyeOff, Lightbulb } from "lucide-react";
+import { BUILTIN_PROGRAMS } from "../store/defaults.js";
+import { bmr, tdee, dailyTarget, suggestedProtein } from "../lib/calories.js";
+import { Eye, EyeOff, Lightbulb, Dumbbell } from "lucide-react";
 
 export function Profile() {
-  const { profile, updateProfile, selectProfileTemplate, apiKey, setApiKey } = useApp();
+  const {
+    profile,
+    updateProfile,
+    selectProfileTemplate,
+    apiKey,
+    setApiKey,
+    activeProgramId,
+    setActiveProgramId,
+    customPrograms,
+    showSnack,
+  } = useApp();
   const [showKey, setShowKey] = useState(false);
 
   function update(patch) {
@@ -172,9 +183,10 @@ export function Profile() {
           </Field>
           <Field label="Goal direction">
             <Select value={profile.goalKey || "maintain"} onChange={(e) => update({ goalKey: e.target.value })}>
-              <option value="cut">Cut (−500 kcal)</option>
+              <option value="cut">Cut (−500 kcal · keep protein high)</option>
               <option value="maintain">Maintain</option>
               <option value="bulk">Bulk (+300 kcal)</option>
+              <option value="muscle_build">Muscle build (+400 kcal · higher protein)</option>
             </Select>
           </Field>
           <Field label="Protein target (g/day)">
@@ -207,6 +219,15 @@ export function Profile() {
           when you don't have a day-type set up.
         </p>
       </Card>
+
+      <GoalSuggestion
+        profile={profile}
+        activeProgramId={activeProgramId}
+        setActiveProgramId={setActiveProgramId}
+        customPrograms={customPrograms}
+        onUpdate={update}
+        showSnack={showSnack}
+      />
 
       <Card>
         <CardHeader
@@ -279,5 +300,117 @@ export function Profile() {
         </Card>
       )}
     </>
+  );
+}
+
+function GoalSuggestion({ profile, activeProgramId, setActiveProgramId, customPrograms, onUpdate, showSnack }) {
+  const goalKey = profile.goalKey || "maintain";
+  const tdeeVal = tdee(profile);
+  const target = dailyTarget(profile);
+  const protein = suggestedProtein(profile);
+  const allPrograms = [...Object.values(BUILTIN_PROGRAMS), ...(customPrograms || [])];
+
+  const recommendedId =
+    goalKey === "muscle_build" || goalKey === "bulk"
+      ? "ppl"
+      : goalKey === "cut"
+        ? "full_body_4day"
+        : "full_body_4day";
+  const rec = allPrograms.find((p) => p.id === recommendedId) || allPrograms[0];
+
+  const goalCopy = {
+    cut: {
+      title: "Cut",
+      detail: "Lose fat while preserving muscle. Aggressive deficit + high protein.",
+      cal: `${target} kcal/day (TDEE ${tdeeVal} − 500)`,
+      pro: `${protein} g protein/day (~2.2 g/kg)`,
+      workout: "Full Body 4-Day works well — keeps strength while in deficit.",
+    },
+    maintain: {
+      title: "Maintain",
+      detail: "Hold weight steady. Eat at TDEE, train 3–5 sessions/week.",
+      cal: `${target} kcal/day (= TDEE)`,
+      pro: `${protein} g protein/day (~1.6 g/kg)`,
+      workout: "Any program works — pick what you'll actually do.",
+    },
+    bulk: {
+      title: "Bulk",
+      detail: "Add weight (mostly muscle) with a moderate surplus.",
+      cal: `${target} kcal/day (TDEE + 300)`,
+      pro: `${protein} g protein/day (~1.8 g/kg)`,
+      workout: "PPL hits each muscle group 2x per week — ideal for surplus training.",
+    },
+    muscle_build: {
+      title: "Muscle build",
+      detail: "Bigger surplus, higher protein, hypertrophy-focused split.",
+      cal: `${target} kcal/day (TDEE + 400)`,
+      pro: `${protein} g protein/day (~2.0 g/kg)`,
+      workout: "Push/Pull/Legs (PPL) is the recommended split — 6 sessions/week.",
+    },
+  }[goalKey];
+
+  function applyTargets() {
+    onUpdate({ proteinTarget: protein });
+    showSnack && showSnack(`Protein target set to ${protein} g/day`);
+  }
+
+  return (
+    <Card>
+      <CardHeader
+        kicker={`Goal · ${goalCopy.title}`}
+        title="Suggestions"
+        subtitle={goalCopy.detail}
+      />
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+        <div className="border-2 border-ink p-3">
+          <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted">Calories</div>
+          <div className="font-display text-xl font-bold mt-1">{goalCopy.cal}</div>
+        </div>
+        <div className="border-2 border-ink p-3">
+          <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted">Protein</div>
+          <div className="font-display text-xl font-bold mt-1">{goalCopy.pro}</div>
+          {profile.proteinTarget !== protein && (
+            <Button variant="outline" size="sm" className="mt-2" onClick={applyTargets}>
+              Apply {protein} g
+            </Button>
+          )}
+        </div>
+        <div className="border-2 border-ink p-3">
+          <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted">Workout</div>
+          <div className="font-body text-base mt-1 italic">{goalCopy.workout}</div>
+        </div>
+      </div>
+
+      <div className="border-2 border-ink p-3 flex items-center gap-3 flex-wrap">
+        <Dumbbell size={18} className="text-accent shrink-0" />
+        <div className="flex-1 min-w-0">
+          <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted">
+            Recommended program
+          </div>
+          <div className="font-display text-xl font-bold">{rec?.name || "—"}</div>
+          {rec?.subtitle && (
+            <div className="font-body text-sm italic text-ink-muted">{rec.subtitle}</div>
+          )}
+        </div>
+        {rec && activeProgramId !== rec.id && (
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => {
+              setActiveProgramId(rec.id);
+              showSnack && showSnack(`Activated ${rec.name}`);
+            }}
+          >
+            Use this
+          </Button>
+        )}
+        {rec && activeProgramId === rec.id && <Chip color="#4a6b3e">Active</Chip>}
+      </div>
+
+      <p className="font-body text-sm italic text-ink-muted mt-3">
+        Want a custom split instead? Build one on the <strong>Programs</strong> tab —
+        it'll appear next to the built-ins.
+      </p>
+    </Card>
   );
 }

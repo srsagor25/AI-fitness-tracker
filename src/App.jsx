@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Layout } from "./components/Layout.jsx";
 import { Dashboard } from "./pages/Dashboard.jsx";
 import { Diet } from "./pages/Diet.jsx";
@@ -13,16 +13,50 @@ import { History } from "./pages/History.jsx";
 import { Grocery } from "./pages/Grocery.jsx";
 import { Body } from "./pages/Body.jsx";
 import { Meds } from "./pages/Meds.jsx";
+import { Supplements } from "./pages/Supplements.jsx";
 import { Profile } from "./pages/Profile.jsx";
 
+// Hash-based tab state so the browser back button takes you to the previous
+// tab instead of leaving the app. Initial tab comes from window.location.hash
+// or falls back to "dashboard".
+function getInitialTab() {
+  if (typeof window === "undefined") return "dashboard";
+  const h = window.location.hash.replace(/^#/, "");
+  return h || "dashboard";
+}
+
 export default function App() {
-  const [tab, setTab] = useState("dashboard");
+  const [tab, setTabState] = useState(getInitialTab);
+
+  // Push history entry when tab changes; let popstate restore prev tab.
+  function setTab(next) {
+    if (next === tab) return;
+    if (typeof window !== "undefined") {
+      window.history.pushState({ tab: next }, "", `#${next}`);
+    }
+    setTabState(next);
+  }
+
+  useEffect(() => {
+    function onPop(e) {
+      const next = e.state?.tab || getInitialTab();
+      setTabState(next);
+    }
+    if (typeof window !== "undefined") {
+      // Replace initial state so the first hash is in the stack.
+      window.history.replaceState({ tab }, "", `#${tab}`);
+      window.addEventListener("popstate", onPop);
+      return () => window.removeEventListener("popstate", onPop);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <Layout tab={tab} setTab={setTab}>
       {tab === "dashboard" && <Dashboard setTab={setTab} />}
       {tab === "diet" && <Diet />}
       {tab === "cheat" && <Cheat />}
-      {tab === "build" && <Build />}
+      {tab === "build" && <Build setTab={setTab} />}
       {tab === "plan" && <Plan />}
       {tab === "week" && <Week />}
       {tab === "foods" && <Foods />}
@@ -32,6 +66,7 @@ export default function App() {
       {tab === "grocery" && <Grocery />}
       {tab === "body" && <Body />}
       {tab === "meds" && <Meds />}
+      {tab === "supplements" && <Supplements />}
       {tab === "profile" && <Profile />}
     </Layout>
   );

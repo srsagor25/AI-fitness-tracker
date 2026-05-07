@@ -35,14 +35,16 @@ export function Diet() {
     removeMealFromSlot,
     cheats,
     cheatSurplus,
-    coffee,
-    toggleCoffee,
+    coffeeLog,
+    addCoffeeEntry,
+    removeCoffeeEntry,
+    toggleCoffeeSchedule,
     steps,
     setSteps,
     stepAdjustKcal,
-    water,
-    incrementWater,
-    decrementWater,
+    waterLog,
+    addWaterEntry,
+    removeWaterEntry,
     dayTypeId,
     setDayTypeId,
     dayType,
@@ -259,86 +261,19 @@ export function Diet() {
         </div>
       )}
 
-      {/* Coffee tracker */}
-      {profile.coffeeSchedule.length > 0 && (
-        <Card>
-          <CardHeader
-            kicker="Caffeine"
-            title="Coffee Tracker"
-            subtitle="Tap each cup as you have it."
-          />
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
-            {profile.coffeeSchedule.map((c, i) => {
-              const had = !!coffee[i];
-              return (
-                <button
-                  key={i}
-                  onClick={() => toggleCoffee(i)}
-                  className={`border-2 border-ink px-3 py-2 text-left flex items-center gap-2 ${
-                    had ? "bg-ink text-paper" : "bg-paper hover:bg-ink/5"
-                  }`}
-                >
-                  <Coffee size={14} className={had ? "text-paper" : "text-ink-muted"} />
-                  <div className="flex-1 min-w-0">
-                    <div className="font-body text-base">{c.label}</div>
-                    <div className={`font-mono text-[10px] uppercase tracking-[0.2em] ${had ? "text-paper/70" : "text-ink-muted"}`}>
-                      {c.time}
-                    </div>
-                  </div>
-                  {had && <span className="font-mono text-[10px]">✓</span>}
-                </button>
-              );
-            })}
-          </div>
-        </Card>
-      )}
-
-      {/* Water tracker */}
-      <Card>
-        <CardHeader
-          kicker="Hydration"
-          title={`${water} / ${profile.waterTarget || 8} cups`}
-          subtitle={
-            water >= (profile.waterTarget || 8)
-              ? "Hydration goal hit — nice."
-              : `${(profile.waterTarget || 8) - water} cup${(profile.waterTarget || 8) - water === 1 ? "" : "s"} to go.`
-          }
-          right={
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={decrementWater}>
-                <Minus size={12} /> Cup
-              </Button>
-              <Button variant="primary" size="sm" onClick={incrementWater}>
-                <Plus size={12} /> Cup
-              </Button>
-            </div>
-          }
-        />
-        <div className="flex flex-wrap gap-1.5">
-          {Array.from({ length: profile.waterTarget || 8 }).map((_, i) => {
-            const filled = i < water;
-            return (
-              <button
-                key={i}
-                onClick={() => (filled ? decrementWater() : incrementWater())}
-                aria-label={filled ? "Remove cup" : "Add cup"}
-                className="w-10 h-10 border-2 border-ink flex items-center justify-center transition-colors hover:bg-ink/10"
-                style={{
-                  backgroundColor: filled ? "#3b6aa3" : "transparent",
-                  color: filled ? "#f4ede0" : "#3b6aa3",
-                }}
-              >
-                <Droplet size={18} fill={filled ? "#f4ede0" : "none"} />
-              </button>
-            );
-          })}
-          {water > (profile.waterTarget || 8) && (
-            <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-good self-center ml-2">
-              +{water - (profile.waterTarget || 8)} bonus
-            </span>
-          )}
-        </div>
-      </Card>
+      <CoffeeTracker
+        profile={profile}
+        log={coffeeLog}
+        onAdd={addCoffeeEntry}
+        onRemove={removeCoffeeEntry}
+        onToggleSchedule={toggleCoffeeSchedule}
+      />
+      <WaterTracker
+        profile={profile}
+        log={waterLog}
+        onAdd={addWaterEntry}
+        onRemove={removeWaterEntry}
+      />
 
       {/* Meal slots */}
       {SLOTS.map((slot) => {
@@ -903,5 +838,264 @@ function EatOutModal({ slot, apiKey, target, logged, eatingWindow, onClose, onPi
         )}
       </div>
     </Modal>
+  );
+}
+
+// ============================================================================
+// Coffee tracker — schedule chips + custom log entries with quantity/unit/time.
+// ============================================================================
+
+const COFFEE_UNITS = ["cup", "ml", "oz", "shot", "mug"];
+
+function CoffeeTracker({ profile, log, onAdd, onRemove, onToggleSchedule }) {
+  const [showAdd, setShowAdd] = useState(false);
+  const [qty, setQty] = useState(1);
+  const [unit, setUnit] = useState("cup");
+  const [time, setTime] = useState("");
+
+  const totalMl = log.reduce((s, e) => {
+    const q = Number(e.qty) || 1;
+    if (e.unit === "ml") return s + q;
+    if (e.unit === "oz") return s + q * 30;
+    if (e.unit === "shot") return s + q * 30;
+    if (e.unit === "cup") return s + q * 240;
+    if (e.unit === "mug") return s + q * 350;
+    return s;
+  }, 0);
+
+  function commit() {
+    onAdd({ qty: Number(qty) || 1, unit, time: time || null });
+    setQty(1);
+    setUnit("cup");
+    setTime("");
+    setShowAdd(false);
+  }
+
+  return (
+    <Card>
+      <CardHeader
+        kicker="Caffeine"
+        title="Coffee"
+        subtitle={
+          log.length === 0
+            ? "Tap a schedule slot or log a custom cup."
+            : `${log.length} entr${log.length === 1 ? "y" : "ies"} · ~${Math.round(totalMl)} ml total`
+        }
+        right={
+          <Button variant="primary" size="sm" onClick={() => setShowAdd((v) => !v)}>
+            <Plus size={12} /> {showAdd ? "Close" : "Custom"}
+          </Button>
+        }
+      />
+
+      {showAdd && (
+        <div className="border-2 border-ink p-3 mb-3 grid grid-cols-1 sm:grid-cols-4 gap-2 items-end">
+          <Field label="Quantity">
+            <TextInput type="number" step="0.5" min="0" value={qty} onChange={(e) => setQty(e.target.value)} />
+          </Field>
+          <Field label="Unit">
+            <Select value={unit} onChange={(e) => setUnit(e.target.value)}>
+              {COFFEE_UNITS.map((u) => (
+                <option key={u} value={u}>{u}</option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Time (optional)">
+            <TextInput type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+          </Field>
+          <Button variant="primary" onClick={commit}>Log</Button>
+        </div>
+      )}
+
+      {profile.coffeeSchedule.length > 0 && (
+        <>
+          <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted mb-2">Schedule</div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 mb-3">
+            {profile.coffeeSchedule.map((c, i) => {
+              const matches = log.filter((e) => e.scheduleIdx === i);
+              const had = matches.length > 0;
+              return (
+                <button
+                  key={i}
+                  onClick={() => onToggleSchedule(i)}
+                  className={`border-2 border-ink px-3 py-2 text-left flex items-center gap-2 ${
+                    had ? "bg-ink text-paper" : "bg-paper hover:bg-ink/5"
+                  }`}
+                >
+                  <Coffee size={14} className={had ? "text-paper" : "text-ink-muted"} />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-body text-base">{c.label}</div>
+                    <div className={`font-mono text-[10px] uppercase tracking-[0.2em] ${had ? "text-paper/70" : "text-ink-muted"}`}>
+                      {c.time}
+                    </div>
+                  </div>
+                  {had && <span className="font-mono text-[10px]">✓</span>}
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      {log.length > 0 && (
+        <>
+          <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted mb-2">Today's log</div>
+          <ul className="divide-y divide-ink/30 border-y border-ink/30">
+            {log.map((e) => {
+              const slot = e.scheduleIdx != null ? profile.coffeeSchedule[e.scheduleIdx] : null;
+              return (
+                <li key={e.id} className="py-2 flex items-center gap-3">
+                  <Coffee size={14} className="text-ink-muted" />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-body text-base">
+                      {e.qty} {e.unit}
+                      {e.qty > 1 && e.unit === "cup" ? "s" : ""}
+                      {slot && (
+                        <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted ml-2">
+                          {slot.label}
+                        </span>
+                      )}
+                    </div>
+                    <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted">
+                      {e.time || (e.ts ? new Date(e.ts).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }) : "—")}
+                    </div>
+                  </div>
+                  <IconButton onClick={() => onRemove(e.id)} aria-label="Remove">
+                    <Trash2 size={12} />
+                  </IconButton>
+                </li>
+              );
+            })}
+          </ul>
+        </>
+      )}
+    </Card>
+  );
+}
+
+// ============================================================================
+// Water tracker — supports cups/ml/oz/L with quantity & optional time.
+// ============================================================================
+
+const WATER_UNITS = ["cup", "ml", "oz", "L", "bottle", "glass"];
+
+export function totalWaterCups(log) {
+  return log.reduce((s, e) => {
+    const q = Number(e.qty) || 1;
+    if (e.unit === "cup") return s + q;
+    if (e.unit === "ml") return s + q / 240;
+    if (e.unit === "oz") return s + q / 8;
+    if (e.unit === "L") return s + q * 4.16;
+    if (e.unit === "bottle") return s + q * 2;
+    if (e.unit === "glass") return s + q;
+    return s + q;
+  }, 0);
+}
+
+function WaterTracker({ profile, log, onAdd, onRemove }) {
+  const [qty, setQty] = useState(1);
+  const [unit, setUnit] = useState("cup");
+  const [time, setTime] = useState("");
+  const [showAdd, setShowAdd] = useState(false);
+
+  const target = profile.waterTarget || 8;
+  const totalCups = totalWaterCups(log);
+
+  function quickAdd(amount, u) {
+    onAdd({ qty: amount, unit: u });
+  }
+
+  function commit() {
+    onAdd({ qty: Number(qty) || 1, unit, time: time || null });
+    setQty(1);
+    setTime("");
+    setShowAdd(false);
+  }
+
+  return (
+    <Card>
+      <CardHeader
+        kicker="Hydration"
+        title={`${totalCups.toFixed(1)} / ${target} cups`}
+        subtitle={
+          totalCups >= target
+            ? "Hydration goal hit — nice."
+            : `${(target - totalCups).toFixed(1)} cup${target - totalCups === 1 ? "" : "s"} to go.`
+        }
+        right={
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={() => quickAdd(1, "cup")}>+1 cup</Button>
+            <Button variant="outline" size="sm" onClick={() => quickAdd(500, "ml")}>+500 ml</Button>
+            <Button variant="primary" size="sm" onClick={() => setShowAdd((v) => !v)}>
+              <Plus size={12} /> {showAdd ? "Close" : "Custom"}
+            </Button>
+          </div>
+        }
+      />
+
+      {showAdd && (
+        <div className="border-2 border-ink p-3 mb-3 grid grid-cols-1 sm:grid-cols-4 gap-2 items-end">
+          <Field label="Quantity">
+            <TextInput type="number" step="0.1" min="0" value={qty} onChange={(e) => setQty(e.target.value)} />
+          </Field>
+          <Field label="Unit">
+            <Select value={unit} onChange={(e) => setUnit(e.target.value)}>
+              {WATER_UNITS.map((u) => (
+                <option key={u} value={u}>{u}</option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Time (optional)">
+            <TextInput type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+          </Field>
+          <Button variant="primary" onClick={commit}>Log</Button>
+        </div>
+      )}
+
+      <div className="flex flex-wrap gap-1.5 mb-3">
+        {Array.from({ length: Math.max(target, Math.ceil(totalCups)) }).map((_, i) => {
+          const filled = i < totalCups;
+          return (
+            <div
+              key={i}
+              className="w-9 h-9 border-2 border-ink flex items-center justify-center transition-colors"
+              style={{
+                backgroundColor: filled ? "#3b6aa3" : "transparent",
+                color: filled ? "#f4ede0" : "#3b6aa3",
+              }}
+            >
+              <Droplet size={16} fill={filled ? "#f4ede0" : "none"} />
+            </div>
+          );
+        })}
+        {totalCups > target && (
+          <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-good self-center ml-2">
+            +{(totalCups - target).toFixed(1)} bonus
+          </span>
+        )}
+      </div>
+
+      {log.length > 0 && (
+        <ul className="divide-y divide-ink/30 border-y border-ink/30">
+          {log.map((e) => (
+            <li key={e.id} className="py-2 flex items-center gap-3">
+              <Droplet size={14} className="text-sky" />
+              <div className="flex-1 min-w-0">
+                <div className="font-body text-base">
+                  {e.qty} {e.unit}
+                  {e.qty > 1 && (e.unit === "cup" || e.unit === "bottle" || e.unit === "glass") ? "s" : ""}
+                </div>
+                <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted">
+                  {e.time || (e.ts ? new Date(e.ts).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }) : "—")}
+                </div>
+              </div>
+              <IconButton onClick={() => onRemove(e.id)} aria-label="Remove">
+                <Trash2 size={12} />
+              </IconButton>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
   );
 }

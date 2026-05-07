@@ -2,10 +2,20 @@ import { useMemo, useState } from "react";
 import { useApp } from "../store/AppContext.jsx";
 import { Card, CardHeader, Stat } from "../components/ui/Card.jsx";
 import { Button, IconButton } from "../components/ui/Button.jsx";
-import { Field, TextInput, Chip } from "../components/ui/Field.jsx";
+import { Field, TextInput, Select, Chip } from "../components/ui/Field.jsx";
 import { Modal } from "../components/ui/Modal.jsx";
 import { FOODS } from "../store/profiles.js";
-import { Plus, Trash2, AlertTriangle } from "lucide-react";
+import { Plus, Trash2, AlertTriangle, Edit3 } from "lucide-react";
+
+const CHEAT_TYPES = [
+  { id: "fast_food", label: "Fast food", icon: "🍔" },
+  { id: "dessert", label: "Dessert / Sweet", icon: "🍰" },
+  { id: "alcohol", label: "Alcohol", icon: "🍻" },
+  { id: "restaurant", label: "Restaurant meal", icon: "🍽️" },
+  { id: "snack", label: "Junk snack", icon: "🍿" },
+  { id: "fried", label: "Fried", icon: "🍟" },
+  { id: "other", label: "Other", icon: "🤤" },
+];
 
 export function Cheat() {
   const {
@@ -19,6 +29,7 @@ export function Cheat() {
   } = useApp();
 
   const [picker, setPicker] = useState(null);
+  const [customOpen, setCustomOpen] = useState(false);
   const presets = profile.cheatPresets || {};
 
   function logCheat(preset, versionKey) {
@@ -45,9 +56,14 @@ export function Cheat() {
           title="Track the splurges"
           subtitle={`Anything over ${baseline} kcal counts as surplus toward weekly drift.`}
           right={
-            <Button variant="primary" size="sm" onClick={() => setPicker({})}>
-              <Plus size={12} /> Log Cheat
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" onClick={() => setCustomOpen(true)}>
+                <Edit3 size={12} /> Custom Cheat
+              </Button>
+              <Button variant="primary" size="sm" onClick={() => setPicker({})}>
+                <Plus size={12} /> From Preset
+              </Button>
+            </div>
           }
         />
 
@@ -139,7 +155,131 @@ export function Cheat() {
           onLog={logCheat}
         />
       )}
+      {customOpen && (
+        <CustomCheatModal
+          onClose={() => setCustomOpen(false)}
+          onLog={(meal) => {
+            addCheat(meal);
+            setCustomOpen(false);
+          }}
+        />
+      )}
     </>
+  );
+}
+
+function CustomCheatModal({ onClose, onLog }) {
+  const [name, setName] = useState("");
+  const [type, setType] = useState("fast_food");
+  const [qty, setQty] = useState(1);
+  const [unit, setUnit] = useState("serving");
+  const [kcal, setKcal] = useState("");
+  const [protein, setProtein] = useState("");
+  const [carbs, setCarbs] = useState("");
+  const [fat, setFat] = useState("");
+  const [note, setNote] = useState("");
+
+  function handleLog() {
+    if (!name.trim()) return;
+    const tDef = CHEAT_TYPES.find((t) => t.id === type) || CHEAT_TYPES[0];
+    const a = Number(qty) || 1;
+    onLog({
+      name: name.trim(),
+      icon: tDef.icon,
+      cheatType: type,
+      items: [
+        {
+          direct: true,
+          name: name.trim(),
+          amount: a,
+          kcal: Number(kcal) || 0,
+          protein: Number(protein) || 0,
+          carbs: Number(carbs) || 0,
+          fat: Number(fat) || 0,
+        },
+      ],
+      note: note.trim() || `${a} ${unit}`,
+    });
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Custom cheat meal"
+      maxWidth="max-w-xl"
+      footer={
+        <>
+          <Button variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button variant="primary" onClick={handleLog} disabled={!name.trim()}>
+            Log Cheat
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        <Field label="Name">
+          <TextInput
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. Burger King Whopper meal"
+          />
+        </Field>
+        <Field label="Type">
+          <Select value={type} onChange={(e) => setType(e.target.value)}>
+            {CHEAT_TYPES.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.icon} {t.label}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Quantity">
+            <TextInput
+              type="number"
+              step="0.5"
+              value={qty}
+              onChange={(e) => setQty(e.target.value)}
+            />
+          </Field>
+          <Field label="Unit">
+            <TextInput
+              value={unit}
+              onChange={(e) => setUnit(e.target.value)}
+              placeholder="serving, slice, can, drink"
+            />
+          </Field>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="kcal (per qty above)">
+            <TextInput type="number" value={kcal} onChange={(e) => setKcal(e.target.value)} />
+          </Field>
+          <Field label="Protein (g)">
+            <TextInput type="number" value={protein} onChange={(e) => setProtein(e.target.value)} />
+          </Field>
+          <Field label="Carbs (g)">
+            <TextInput type="number" value={carbs} onChange={(e) => setCarbs(e.target.value)} />
+          </Field>
+          <Field label="Fat (g)">
+            <TextInput type="number" value={fat} onChange={(e) => setFat(e.target.value)} />
+          </Field>
+        </div>
+        <Field label="Note (optional)">
+          <TextInput
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="e.g. with friends, late night"
+          />
+        </Field>
+        <p className="font-body text-sm italic text-ink-muted">
+          The values are scaled by the quantity you set above. Surplus over your cheat
+          baseline is computed automatically.
+        </p>
+      </div>
+    </Modal>
   );
 }
 

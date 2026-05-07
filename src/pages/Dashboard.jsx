@@ -45,9 +45,9 @@ export function Dashboard({ setTab }) {
     currentSession,
     meals,
     cheats,
-    coffee,
+    coffeeLog,
     steps,
-    water,
+    waterLog,
     dayType,
     streak,
     ifStatus,
@@ -283,7 +283,30 @@ export function Dashboard({ setTab }) {
 
   const totalMealsToday =
     meals.lunch.length + meals.shake.length + meals.dinner.length + meals.snack.length;
-  const coffeeHad = coffee.filter(Boolean).length;
+  const coffeeHad = coffeeLog.length;
+  const waterCups = waterLog.reduce((s, e) => {
+    const q = Number(e.qty) || 1;
+    if (e.unit === "cup") return s + q;
+    if (e.unit === "ml") return s + q / 240;
+    if (e.unit === "oz") return s + q / 8;
+    if (e.unit === "L") return s + q * 4.16;
+    if (e.unit === "bottle") return s + q * 2;
+    if (e.unit === "glass") return s + q;
+    return s + q;
+  }, 0);
+
+  // Burn target: scaled with goal — clear, separable from intake.
+  // Default burn target = TDEE − BMR (i.e. activity-driven calories the
+  // body should "spend" daily). Goal scales it: bulk demands less, cut more.
+  const baseBurnTarget = Math.max(0, tdee(profile) - bmr(profile));
+  const goalKey = profile.goalKey || profile.goal || "maintain";
+  const burnMult = goalKey === "cut" ? 1.2 : goalKey === "bulk" ? 0.8 : goalKey === "muscle_build" ? 1.0 : 1.0;
+  const burnTarget = Math.round(baseBurnTarget * burnMult);
+  const burned = Math.round(todaysWorkoutKcal); // workout kcal counts as deliberate burn
+  const eaten = Math.round(dayTotals.kcal);
+  const eatTarget = Math.round(dailyTargetKcal);
+  const overEat = eaten - eatTarget;
+  const burnRemaining = burnTarget - burned;
 
   return (
     <>
@@ -311,28 +334,73 @@ export function Dashboard({ setTab }) {
           }
         />
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <Stat label="Eaten" value={Math.round(dayTotals.kcal)} suffix="kcal" />
-          <Stat label="Burned" value={Math.round(todaysWorkoutKcal)} suffix="kcal" accent="#4a6b3e" />
-          <Stat label="Target" value={Math.round(dailyTargetKcal)} suffix="kcal" accent="#3b6aa3" />
-          <Stat
-            label={remaining >= 0 ? "Remaining" : "Over"}
-            value={Math.abs(Math.round(remaining))}
-            suffix="kcal"
-            accent={remaining >= 0 ? "#4a6b3e" : "#c44827"}
-          />
+        {/* Eating side */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="border-2 border-ink p-4 bg-paper">
+            <div className="flex items-baseline justify-between gap-2 mb-2">
+              <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted">
+                Eating · Calories In
+              </span>
+              <span className="font-mono text-[10px] uppercase tracking-[0.25em]" style={{ color: overEat > 0 ? "#c44827" : "#4a6b3e" }}>
+                {overEat > 0 ? `OVER ${overEat}` : `${Math.abs(overEat)} LEFT`}
+              </span>
+            </div>
+            <div className="flex items-baseline gap-2">
+              <span className="font-display text-4xl md:text-5xl font-black leading-none">
+                {eaten}
+              </span>
+              <span className="font-mono text-xs uppercase tracking-widest text-ink-muted">
+                / {eatTarget} kcal
+              </span>
+            </div>
+            <ProgressBar value={eaten} max={eatTarget} />
+            <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted mt-2">
+              {dayType?.label} target {Math.round(dailyTargetKcal - todaysWorkoutKcal)}
+              {todaysWorkoutKcal > 0 ? ` + workout +${Math.round(todaysWorkoutKcal)} = ${eatTarget}` : ""}
+            </div>
+          </div>
+
+          <div className="border-2 border-ink p-4 bg-paper">
+            <div className="flex items-baseline justify-between gap-2 mb-2">
+              <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted">
+                Burning · Calories Out
+              </span>
+              <span className="font-mono text-[10px] uppercase tracking-[0.25em]" style={{ color: burnRemaining <= 0 ? "#4a6b3e" : "#6b5a3e" }}>
+                {burnRemaining <= 0 ? `+${Math.abs(burnRemaining)} BONUS` : `${burnRemaining} TO GO`}
+              </span>
+            </div>
+            <div className="flex items-baseline gap-2">
+              <span className="font-display text-4xl md:text-5xl font-black leading-none" style={{ color: "#4a6b3e" }}>
+                {burned}
+              </span>
+              <span className="font-mono text-xs uppercase tracking-widest text-ink-muted">
+                / {burnTarget} kcal
+              </span>
+            </div>
+            <ProgressBar value={burned} max={burnTarget} color="#4a6b3e" />
+            <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted mt-2">
+              Goal "{goalKey}" sets target {burnTarget} kcal/day from training
+            </div>
+          </div>
         </div>
 
-        <div className="mt-4">
-          <div className="flex items-center justify-between mb-1">
+        {/* Net summary */}
+        <div className="mt-4 border-2 border-ink p-3 bg-ink/5 flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2">
             <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted">
-              Energy balance
+              Net energy
             </span>
-            <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted">
-              {Math.round(dayTotals.kcal)} / {Math.round(dailyTargetKcal)} kcal
+            <span className="font-display text-2xl font-black tabular-nums">
+              {eaten - burned >= 0 ? "+" : ""}
+              {eaten - burned}
+              <span className="font-mono text-xs uppercase tracking-widest text-ink-muted ml-1">
+                kcal
+              </span>
             </span>
           </div>
-          <ProgressBar value={dayTotals.kcal} max={dailyTargetKcal} />
+          <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted">
+            Eaten {eaten} − Burned {burned} = Net {eaten - burned}
+          </div>
         </div>
       </Card>
 
@@ -560,56 +628,23 @@ export function Dashboard({ setTab }) {
 
       <Card>
         <CardHeader kicker="Healthy Habits" title="Daily Tracking" />
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <div className="border-2 border-ink p-3">
-            <div className="flex items-center gap-2 mb-1">
-              <Coffee size={14} />
-              <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted">
-                Coffee
-              </span>
-            </div>
-            <div className="font-display text-2xl font-black">
-              {coffeeHad}
-              <span className="font-mono text-xs text-ink-muted ml-1">
-                / {profile.coffeeSchedule.length || "—"}
-              </span>
-            </div>
-          </div>
-          <div className="border-2 border-ink p-3">
-            <div className="flex items-center gap-2 mb-1">
-              <Droplet size={14} className="text-sky" />
-              <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted">
-                Water
-              </span>
-            </div>
-            <div className="font-display text-2xl font-black">
-              {water}
-              <span className="font-mono text-xs text-ink-muted ml-1">
-                / {profile.waterTarget || 8} cups
-              </span>
-            </div>
-          </div>
-          <div className="border-2 border-ink p-3">
-            <div className="flex items-center gap-2 mb-1">
-              <Footprints size={14} />
-              <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted">
-                Steps
-              </span>
-            </div>
-            <div className="font-display text-2xl font-black">{steps.toLocaleString()}</div>
-          </div>
-          <div className="border-2 border-ink p-3">
-            <div className="flex items-center gap-2 mb-1">
-              <Flame size={14} />
-              <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted">
-                Workout +
-              </span>
-            </div>
-            <div className="font-display text-2xl font-black text-good">
-              +{Math.round(todaysWorkoutKcal)}
-              <span className="font-mono text-xs text-ink-muted ml-1">kcal</span>
-            </div>
-          </div>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          <HabitTile icon={Coffee} label="Coffee" value={coffeeHad} suffix={profile.coffeeSchedule.length ? `/ ${profile.coffeeSchedule.length}` : "cups"} />
+          <HabitTile icon={Droplet} label="Water" value={waterCups.toFixed(1)} suffix={`/ ${profile.waterTarget || 8} cups`} accent="#3b6aa3" />
+          <HabitTile icon={Footprints} label="Steps" value={steps.toLocaleString()} suffix="" />
+          <MedsHabitTile
+            kicker="Meds"
+            meds={meds.filter((m) => (m.category || "med") === "med")}
+            doses={medsTakenToday.filter((d) => (d.category || "med") === "med")}
+            onClick={() => setTab("meds")}
+          />
+          <MedsHabitTile
+            kicker="Supps"
+            meds={meds.filter((m) => (m.category || "med") === "supplement")}
+            doses={medsTakenToday.filter((d) => (d.category || "med") === "supplement")}
+            onClick={() => setTab("supplements")}
+          />
+          <HabitTile icon={Flame} label="Workout +" value={`+${Math.round(todaysWorkoutKcal)}`} suffix="kcal" accent="#4a6b3e" />
         </div>
       </Card>
 
@@ -653,5 +688,68 @@ function MacroRow({ label, value, target, unit, color }) {
         />
       </div>
     </div>
+  );
+}
+
+function HabitTile({ icon: Icon, label, value, suffix, accent }) {
+  return (
+    <div className="border-2 border-ink p-3">
+      <div className="flex items-center gap-2 mb-1">
+        <Icon size={14} className={accent ? "text-sky" : ""} />
+        <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted">
+          {label}
+        </span>
+      </div>
+      <div className="font-display text-2xl font-black" style={{ color: accent || "#2a2419" }}>
+        {value}
+        {suffix && (
+          <span className="font-mono text-xs text-ink-muted ml-1">{suffix}</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MedsHabitTile({ kicker, meds, doses, onClick }) {
+  // Compute "due today" count by checking each med's repeat cycle.
+  const today = new Date();
+  const todayDateKey = (() => {
+    const y = today.getFullYear();
+    const m = String(today.getMonth() + 1).padStart(2, "0");
+    const d = String(today.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  })();
+  const dueCount = meds.filter((m) => {
+    const every = Math.max(1, Number(m.repeatEveryDays) || 1);
+    if (every === 1) return true;
+    const start = m.startDate || todayDateKey;
+    const days = Math.floor((new Date(todayDateKey) - new Date(start)) / 86400000);
+    return days >= 0 && days % every === 0;
+  }).length;
+  const takenIds = new Set(doses.map((d) => d.medId));
+  const takenDueCount = meds.filter((m) => takenIds.has(m.id)).length;
+
+  return (
+    <button
+      onClick={onClick}
+      className="border-2 border-ink p-3 text-left hover:bg-ink/5 transition-colors"
+    >
+      <div className="flex items-center gap-2 mb-1">
+        <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted">
+          {kicker}
+        </span>
+      </div>
+      <div className="font-display text-2xl font-black">
+        {takenDueCount}
+        <span className="font-mono text-xs text-ink-muted ml-1">
+          / {dueCount} due
+        </span>
+      </div>
+      {meds.length === 0 && (
+        <div className="font-mono text-[9px] uppercase tracking-[0.2em] text-ink-muted mt-0.5 italic">
+          tap to add
+        </div>
+      )}
+    </button>
   );
 }

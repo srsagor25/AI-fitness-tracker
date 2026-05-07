@@ -33,9 +33,36 @@ export function AppProvider({ children }) {
   // ----- Per-day data -----
   const [meals, setMeals] = useState(() => load(`meals:${dateKey}`, blankMeals()));
   const [cheats, setCheats] = useState(() => load(`cheats:${dateKey}`, []));
-  const [coffee, setCoffee] = useState(() => load(`coffee:${dateKey}`, []));
+  // Coffee: legacy was a boolean[] aligned with profile.coffeeSchedule. Now
+  // it's an array of entries { id, scheduleIdx?, qty, unit, ts? }. Booleans
+  // migrate to one entry per checked slot.
+  const [coffeeLog, setCoffeeLog] = useState(() => {
+    const stored = load(`coffee:${dateKey}`, null);
+    if (Array.isArray(stored) && stored.length > 0 && typeof stored[0] === "object") {
+      return stored;
+    }
+    if (Array.isArray(stored)) {
+      return stored.flatMap((checked, i) =>
+        checked ? [{ id: uid("c"), scheduleIdx: i, qty: 1, unit: "cup" }] : [],
+      );
+    }
+    return [];
+  });
   const [steps, setSteps] = useState(() => load(`steps:${dateKey}`, 0));
-  const [water, setWater] = useState(() => load(`water:${dateKey}`, 0));
+  // Water: array of entries { id, qty, unit, ts? } — qty defaults to 1 cup.
+  // Legacy: number value migrates to N entries on first load.
+  const [waterLog, setWaterLog] = useState(() => {
+    const stored = load(`water:${dateKey}`, null);
+    if (Array.isArray(stored)) return stored;
+    if (typeof stored === "number" && stored > 0) {
+      return Array.from({ length: stored }, (_, i) => ({
+        id: uid("w"),
+        qty: 1,
+        unit: "cup",
+      }));
+    }
+    return [];
+  });
   const [dayTypeId, setDayTypeId] = useState(() => load(`dayType:${dateKey}`, profile.dayTypes[0]?.id || "rest"));
   const [medsTakenToday, setMedsTakenToday] = useState(() => load(`meds:taken:${dateKey}`, []));
 
@@ -112,9 +139,9 @@ export function AppProvider({ children }) {
   useEffect(() => save("apiKey:anthropic", apiKey), [apiKey]);
   useEffect(() => save(`meals:${dateKey}`, meals), [meals, dateKey]);
   useEffect(() => save(`cheats:${dateKey}`, cheats), [cheats, dateKey]);
-  useEffect(() => save(`coffee:${dateKey}`, coffee), [coffee, dateKey]);
+  useEffect(() => save(`coffee:${dateKey}`, coffeeLog), [coffeeLog, dateKey]);
   useEffect(() => save(`steps:${dateKey}`, steps), [steps, dateKey]);
-  useEffect(() => save(`water:${dateKey}`, water), [water, dateKey]);
+  useEffect(() => save(`water:${dateKey}`, waterLog), [waterLog, dateKey]);
   useEffect(() => save(`dayType:${dateKey}`, dayTypeId), [dayTypeId, dateKey]);
   useEffect(() => save(`meds:taken:${dateKey}`, medsTakenToday), [medsTakenToday, dateKey]);
   useEffect(() => save("weight:log", weightLog), [weightLog]);
@@ -360,19 +387,55 @@ export function AppProvider({ children }) {
   function clearDay() {
     setMeals(blankMeals());
     setCheats([]);
-    setCoffee(new Array(profile.coffeeSchedule.length).fill(false));
+    setCoffeeLog([]);
     setSteps(0);
-    setWater(0);
+    setWaterLog([]);
     setMedsTakenToday([]);
     showSnack("Day cleared");
   }
 
-  // ----- Water -----
-  function incrementWater() {
-    setWater((w) => w + 1);
+  // ----- Water entries -----
+  function addWaterEntry({ qty = 1, unit = "cup", time } = {}) {
+    setWaterLog((prev) => [
+      ...prev,
+      { id: uid("w"), qty: Number(qty) || 1, unit, time: time || null, ts: Date.now() },
+    ]);
   }
-  function decrementWater() {
-    setWater((w) => Math.max(0, w - 1));
+  function removeWaterEntry(id) {
+    setWaterLog((prev) => prev.filter((e) => e.id !== id));
+  }
+
+  // ----- Coffee entries -----
+  function addCoffeeEntry({ qty = 1, unit = "cup", time, scheduleIdx } = {}) {
+    setCoffeeLog((prev) => [
+      ...prev,
+      {
+        id: uid("c"),
+        qty: Number(qty) || 1,
+        unit,
+        time: time || null,
+        scheduleIdx: scheduleIdx ?? null,
+        ts: Date.now(),
+      },
+    ]);
+  }
+  function removeCoffeeEntry(id) {
+    setCoffeeLog((prev) => prev.filter((e) => e.id !== id));
+  }
+  function toggleCoffeeSchedule(idx) {
+    // Used by the schedule chips: if any entry exists for this idx, remove
+    // them all; otherwise add one matching the schedule slot.
+    setCoffeeLog((prev) => {
+      const matches = prev.filter((e) => e.scheduleIdx === idx);
+      if (matches.length > 0) {
+        const matchIds = new Set(matches.map((m) => m.id));
+        return prev.filter((e) => !matchIds.has(e.id));
+      }
+      return [
+        ...prev,
+        { id: uid("c"), qty: 1, unit: "cup", scheduleIdx: idx, ts: Date.now() },
+      ];
+    });
   }
 
   // ----- Weight log -----
@@ -448,6 +511,7 @@ export function AppProvider({ children }) {
       medId: med.id,
       medName: med.name,
       type: med.type,
+      category: med.category || "med",
       quantity: qty,
       unit: med.unit || "",
       note,
@@ -686,9 +750,9 @@ export function AppProvider({ children }) {
     dateKey,
     meals, addMealToSlot, removeMealFromSlot,
     cheats, addCheat, removeCheat, cheatSurplus,
-    coffee, toggleCoffee,
+    coffeeLog, addCoffeeEntry, removeCoffeeEntry, toggleCoffeeSchedule,
     steps, setSteps, stepAdjustKcal,
-    water, setWater, incrementWater, decrementWater,
+    waterLog, addWaterEntry, removeWaterEntry,
     dayTypeId, setDayTypeId, dayType,
     clearDay,
     // totals + helpers

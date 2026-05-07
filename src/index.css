@@ -34,6 +34,23 @@ input,
 select,
 textarea {
   font-family: inherit;
+  /* iOS zooms inputs whose font-size is < 16px. Force 16px on small viewports
+     to prevent the page from auto-zooming when a field is focused. */
+  font-size: 16px;
+}
+
+@media (min-width: 768px) {
+  /* Restore Tailwind sizing on desktop where iOS zoom isn't a concern. */
+  input,
+  select,
+  textarea {
+    font-size: inherit;
+  }
+}
+
+/* Safe area inset for the fixed bottom nav on iOS Safari. */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 /* Hide number-input spinners */

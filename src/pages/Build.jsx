@@ -3,13 +3,14 @@ import { useApp } from "../store/AppContext.jsx";
 import { Card, CardHeader, Stat } from "../components/ui/Card.jsx";
 import { Button, IconButton } from "../components/ui/Button.jsx";
 import { Field, TextInput, Select, Chip } from "../components/ui/Field.jsx";
-import { FOODS } from "../store/profiles.js";
-import { Plus, Trash2, Save } from "lucide-react";
+import { FOODS, getAllFoods } from "../store/profiles.js";
+import { Plus, Trash2, Save, BookOpen } from "lucide-react";
 
 const SLOTS = ["lunch", "shake", "dinner", "snack"];
 
-export function Build() {
+export function Build({ setTab }) {
   const { addMealToSlot, dayTotals, dailyTargetKcal, profile, calc, customFoods } = useApp();
+  const allFoods = useMemo(() => getAllFoods(customFoods), [customFoods]);
 
   const [name, setName] = useState("");
   const [icon, setIcon] = useState("✏️");
@@ -17,7 +18,7 @@ export function Build() {
   const [items, setItems] = useState([]);
 
   function addItem(foodKey) {
-    const f = FOODS[foodKey] || customFoods[foodKey];
+    const f = allFoods.find((x) => x.key === foodKey);
     if (!f) return;
     const defaultAmount = f.unit === "pc" || f.unit === "tbsp" || f.unit === "tsp" || f.unit === "cup" || f.unit === "slice" ? 1 : 100;
     setItems((prev) => [...prev, { food: foodKey, amount: defaultAmount }]);
@@ -120,7 +121,7 @@ export function Build() {
         ) : (
           <ul className="divide-y divide-ink/30 border-y border-ink/30 mb-3">
             {items.map((it, i) => {
-              const f = FOODS[it.food] || customFoods[it.food] || { display: it.food, unit: "" };
+              const f = allFoods.find((x) => x.key === it.food) || { display: it.food, unit: "" };
               const t = calc([it]);
               return (
                 <li key={i} className="py-2 flex items-center gap-2">
@@ -160,21 +161,34 @@ export function Build() {
       </Card>
 
       <Card>
-        <CardHeader kicker="Library" title="Add an ingredient" />
+        <CardHeader
+          kicker="Library"
+          title="Add Ingredients"
+          subtitle="Tap any food to add it. Need a food that's not here? Add it on the Foods tab."
+          right={
+            setTab && (
+              <Button variant="outline" size="sm" onClick={() => setTab("foods")}>
+                <BookOpen size={12} /> Add Food
+              </Button>
+            )
+          }
+        />
         <div className="space-y-4">
-          {Object.entries(grouped).map(([cat, keys]) => (
-            <div key={cat}>
-              <h4 className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted mb-2">
-                {cat}
-              </h4>
-              <div className="flex flex-wrap gap-2">
-                {keys.map((k) => {
-                  const f = FOODS[k] || customFoods[k];
-                  if (!f) return null;
-                  return (
+          {Object.entries(grouped).map(([cat, keys]) => {
+            const items = keys
+              .map((k) => allFoods.find((x) => x.key === k))
+              .filter(Boolean);
+            if (items.length === 0) return null;
+            return (
+              <div key={cat}>
+                <h4 className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted mb-2">
+                  {cat}
+                </h4>
+                <div className="flex flex-wrap gap-2">
+                  {items.map((f) => (
                     <button
-                      key={k}
-                      onClick={() => addItem(k)}
+                      key={f.key}
+                      onClick={() => addItem(f.key)}
                       className="border-2 border-ink px-3 py-1.5 hover:bg-ink hover:text-paper transition-colors text-left group"
                     >
                       <div className="font-body text-base">{f.display}</div>
@@ -182,11 +196,38 @@ export function Build() {
                         {f.kcal}k/{f.unit} · {f.protein}p/{f.unit}
                       </div>
                     </button>
-                  );
-                })}
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
+          {/* User-added foods shown in their own group */}
+          {(() => {
+            const baseKeys = new Set(Object.keys(FOODS));
+            const userFoods = allFoods.filter((f) => !baseKeys.has(f.key));
+            if (userFoods.length === 0) return null;
+            return (
+              <div>
+                <h4 className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted mb-2">
+                  Your custom foods
+                </h4>
+                <div className="flex flex-wrap gap-2">
+                  {userFoods.map((f) => (
+                    <button
+                      key={f.key}
+                      onClick={() => addItem(f.key)}
+                      className="border-2 border-sky px-3 py-1.5 hover:bg-sky hover:text-paper transition-colors text-left group"
+                    >
+                      <div className="font-body text-base">{f.display}</div>
+                      <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted group-hover:text-paper/70">
+                        {f.kcal}k/{f.unit} · {f.protein}p/{f.unit}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
         </div>
       </Card>
     </>
