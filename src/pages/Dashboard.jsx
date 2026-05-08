@@ -1,4 +1,10 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  notifySupported,
+  notifyPermission,
+  requestNotifyPermission,
+  notifyDueReminders,
+} from "../lib/notify.js";
 import { useApp } from "../store/AppContext.jsx";
 import { Card, CardHeader, Stat } from "../components/ui/Card.jsx";
 import { Button } from "../components/ui/Button.jsx";
@@ -60,6 +66,7 @@ export function Dashboard({ setTab }) {
     waterLog,
     dayType,
     streak,
+    streaks,
     ifStatus,
     now,
     meds,
@@ -78,10 +85,14 @@ export function Dashboard({ setTab }) {
     addCustomTask,
     toggleCustomTask,
     removeCustomTask,
+    plan,
+    addMealToSlot,
+    dateKey,
   } = useApp();
   const [showAddTask, setShowAddTask] = useState(false);
   const [newTaskLabel, setNewTaskLabel] = useState("");
   const [newTaskTime, setNewTaskTime] = useState("");
+  const [notifyState, setNotifyState] = useState(() => notifyPermission());
 
   const remaining = dailyTargetKcal - dayTotals.kcal;
 
@@ -164,28 +175,51 @@ export function Dashboard({ setTab }) {
       });
     }
 
-    // Diet (per slot)
+    // Diet (per slot). For each slot we look up today's plan to surface the
+    // menu in the description ("No menu set" when nothing is planned). The
+    // matching preset is attached to the reminder so the Take button on the
+    // card can one-tap log it without opening the Diet tab.
     const slotIcons = { lunch: "🍱", shake: "🥤", dinner: "🍽️" };
     const slotMealTimes = profile.mealTimes || {};
+    const presetsBySlot = {
+      lunch: profile.lunchPresets || {},
+      shake: profile.shakePresets || {},
+      dinner: profile.dinnerPresets || {},
+    };
+    const todaysPlan = (plan && plan[dateKey]) || {};
     for (const slot of ["lunch", "shake", "dinner"]) {
-      const logged = (meals[slot] || []).length > 0;
-      const slotKcal = (meals[slot] || []).reduce(
-        (s, m) => s + (m.totals?.kcal || 0),
-        0,
-      );
+      const slotMeals = meals[slot] || [];
+      const logged = slotMeals.length > 0;
       const t = timeToToday(slotMealTimes[slot]);
       const ms = t ? t - nowDate : null;
+
+      const plannedKey = todaysPlan[slot];
+      const slotPresets = presetsBySlot[slot];
+      // Plan can store preset key (string) or { type:"preset",key } / { type:"cheat",key }
+      let plannedPreset = null;
+      if (plannedKey) {
+        if (typeof plannedKey === "string") plannedPreset = slotPresets[plannedKey];
+        else if (plannedKey.key) plannedPreset = slotPresets[plannedKey.key];
+      }
+
+      let detail;
+      if (logged) {
+        detail = `Logged ✓ · ${slotMeals.map((m) => m.name).slice(0, 2).join(", ")}${slotMeals.length > 2 ? ` +${slotMeals.length - 2}` : ""}`;
+      } else if (plannedPreset) {
+        const at = t ? ` · ${slotMealTimes[slot]}` : "";
+        detail = `${plannedPreset.icon || ""} ${plannedPreset.name}${at}`.trim();
+      } else {
+        const at = t ? ` · ${slotMealTimes[slot]}` : "";
+        detail = `No menu set${at}`;
+      }
+
       list.push({
         id: `diet-${slot}`,
         icon: Utensils,
         domain: "diet",
         emoji: slotIcons[slot],
         label: slot[0].toUpperCase() + slot.slice(1),
-        detail: logged
-          ? `Logged ✓`
-          : t
-            ? `Scheduled ${slotMealTimes[slot]}`
-            : "No time set",
+        detail,
         countdown: logged ? null : ms,
         urgency: logged
           ? "done"
@@ -194,6 +228,8 @@ export function Dashboard({ setTab }) {
             : ms != null && ms < 3600000
               ? "soon"
               : "scheduled",
+        slot,
+        plannedPreset,
       });
     }
 
@@ -410,6 +446,9 @@ export function Dashboard({ setTab }) {
     profile.workoutTime,
     profile.mealTimes,
     profile.stepAdjust?.baseline,
+    profile.lunchPresets,
+    profile.shakePresets,
+    profile.dinnerPresets,
     meals,
     grocery,
     meds,
@@ -417,7 +456,19 @@ export function Dashboard({ setTab }) {
     steps,
     sportsLog,
     customTasks,
+    plan,
+    dateKey,
   ]);
+
+  // Fire browser notifications for any reminders that are now due/late and
+  // haven't fired today. Runs on every render — safe because notify.js
+  // dedupes via a localStorage set per (day, reminder id).
+  useEffect(() => {
+    if (notifyState === "granted") {
+      notifyDueReminders(reminders.list);
+    }
+  }, [reminders.list, notifyState]);
+
   const proteinPct = profile.proteinTarget
     ? Math.round((dayTotals.protein / profile.proteinTarget) * 100)
     : 0;
@@ -477,9 +528,27 @@ export function Dashboard({ setTab }) {
           title="What's pending today"
           subtitle="Live countdowns + quick actions. Add custom tasks for anything else."
           right={
-            <Button variant="outline" size="sm" onClick={() => setShowAddTask((s) => !s)}>
-              {showAddTask ? "Cancel" : "+ Add task"}
-            </Button>
+            <div className="flex flex-wrap gap-2 items-center">
+              {notifySupported() && notifyState !== "granted" && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => {
+                    const r = await requestNotifyPermission();
+                    setNotifyState(r);
+                  }}
+                  title="Allow desktop notifications when a task is due"
+                >
+                  🔔 Enable notifications
+                </Button>
+              )}
+              {notifyState === "granted" && (
+                <Chip color="#4a6b3e">🔔 On</Chip>
+              )}
+              <Button variant="outline" size="sm" onClick={() => setShowAddTask((s) => !s)}>
+                {showAddTask ? "Cancel" : "+ Add task"}
+              </Button>
+            </div>
           }
         />
         {showAddTask && (
@@ -569,6 +638,25 @@ export function Dashboard({ setTab }) {
                     title="Add 1000 steps"
                   >
                     +1k
+                  </button>
+                );
+              } else if (r.domain === "diet" && r.urgency !== "done" && r.plannedPreset) {
+                // One-tap "Take": logs the planned preset for this slot
+                // without leaving Today.
+                quickAction = (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      addMealToSlot(r.slot, {
+                        name: r.plannedPreset.name,
+                        presetKey: r.plannedPreset.key,
+                        items: r.plannedPreset.items,
+                      });
+                    }}
+                    className="font-mono text-[10px] uppercase tracking-[0.2em] border-2 border-ink px-2 py-1 hover:bg-ink hover:text-paper whitespace-nowrap"
+                  >
+                    Take ✓
                   </button>
                 );
               } else if (
@@ -720,6 +808,8 @@ export function Dashboard({ setTab }) {
           <CardHeader kicker={`Coach · ${burnSuggestion.goalKey}`} title="On goal" subtitle={burnSuggestion.message} />
         </Card>
       )}
+
+      <StreakStrip streaks={streaks} />
 
       <QuickLog
         addWaterEntry={addWaterEntry}
@@ -1586,5 +1676,53 @@ function QuickTile({ icon: Icon, emoji, label, sub, active, confirmed, onClick }
         </>
       )}
     </button>
+  );
+}
+
+// ============================================================================
+// StreakStrip — four count badges (meal / workout / steps / all-three) so
+// the user can see at a glance which habits are sticking.
+// ============================================================================
+
+function StreakStrip({ streaks }) {
+  const items = [
+    { id: "meal",    label: "Meal",     emoji: "🍱", color: "#3b6aa3", value: streaks?.meal || 0 },
+    { id: "workout", label: "Workout",  emoji: "💪", color: "#c44827", value: streaks?.workout || 0 },
+    { id: "steps",   label: "Steps",    emoji: "🚶", color: "#4a6b3e", value: streaks?.steps || 0 },
+    { id: "all",     label: "All-three", emoji: "🔥", color: "#6b5a3e", value: streaks?.all || 0 },
+  ];
+  return (
+    <Card>
+      <CardHeader
+        kicker="Streaks"
+        title="Consecutive days"
+        subtitle="Each habit is its own streak — All-three counts only days where every habit was hit."
+      />
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {items.map((it) => (
+          <div
+            key={it.id}
+            className="border-2 border-ink p-3 flex items-center gap-3"
+            style={{ borderLeftColor: it.color, borderLeftWidth: 6 }}
+          >
+            <span className="text-3xl shrink-0">{it.emoji}</span>
+            <div className="flex-1 min-w-0">
+              <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted">
+                {it.label}
+              </div>
+              <div
+                className="font-display text-3xl font-black tabular-nums leading-none"
+                style={{ color: it.color }}
+              >
+                {it.value}
+              </div>
+              <div className="font-mono text-[9px] uppercase tracking-[0.25em] text-ink-muted">
+                {it.value === 1 ? "day" : "days"}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </Card>
   );
 }

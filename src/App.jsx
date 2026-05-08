@@ -40,7 +40,7 @@ export const TAB_DEF = {
     default: "workout",
     subTabs: [
       { id: "workout", label: "Workout" },
-      { id: "sports", label: "Sports" },
+      { id: "sports", label: "Sports & Others" },
       { id: "steps", label: "Steps" },
       { id: "programs", label: "Programs" },
     ],

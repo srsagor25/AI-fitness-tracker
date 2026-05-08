@@ -180,6 +180,15 @@ export function AppProvider({ children }) {
     } catch {
       // listKeys is best-effort — harmless if it fails
     }
+
+    // Merge any new built-in sports (added in newer releases) into the
+    // user's saved list. Custom sports they've added stay untouched.
+    setSportsList((prev) => {
+      const haveIds = new Set(prev.map((s) => s.id));
+      const additions = DEFAULT_SPORTS.filter((s) => !haveIds.has(s.id));
+      if (additions.length === 0) return prev;
+      return [...prev, ...additions];
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -401,6 +410,81 @@ export function AppProvider({ children }) {
     }
     return count;
   }, [meals, cheats, customFoods]);
+
+  // ----- Streaks for workout, steps, and the all-three-together streak -----
+  // A day "counts" when:
+  //   meal:    total kcal > 100 (covers cheats too)
+  //   workout: at least one workout:history entry on that date
+  //   steps:   steps that day >= profile.stepAdjust.baseline (default 10k)
+  //   all:     all three above true
+  const streaks = useMemo(() => {
+    const baseline = profile?.stepAdjust?.baseline || 10000;
+
+    // Pre-index workout history by yyyy-mm-dd for O(1) lookups.
+    const workoutDays = new Set(history.map((h) => todayKey(new Date(h.date))));
+
+    function dayMealKcal(yyyymmdd) {
+      let kcal = 0;
+      const m = load(`meals:${yyyymmdd}`, null);
+      const ch = load(`cheats:${yyyymmdd}`, null);
+      if (!m && !ch) return null; // no log at all for that day
+      if (m) {
+        for (const slot of SLOTS) {
+          for (const meal of m[slot] || []) kcal += calcMeal(meal.items, customFoods).kcal;
+        }
+      }
+      if (ch) for (const c of ch) kcal += calcMeal(c.items, customFoods).kcal;
+      return kcal;
+    }
+
+    // Today's values (live, not from storage).
+    const todayK = todayKey();
+    const todayMealKcal = (() => {
+      let k = 0;
+      for (const slot of SLOTS) for (const meal of meals[slot] || []) k += calcMeal(meal.items, customFoods).kcal;
+      for (const c of cheats) k += calcMeal(c.items, customFoods).kcal;
+      return k;
+    })();
+
+    function dayStatus(k, isToday) {
+      const mealK = isToday ? todayMealKcal : dayMealKcal(k);
+      const stepCount = isToday ? steps : Number(load(`steps:${k}`, 0)) || 0;
+      const meal = (mealK ?? 0) > 100;
+      const workout = workoutDays.has(k);
+      const stepsHit = stepCount >= baseline;
+      return { meal, workout, steps: stepsHit, mealLogged: mealK != null };
+    }
+
+    function streakBy(predicate) {
+      const day = new Date();
+      day.setHours(0, 0, 0, 0);
+      let count = 0;
+      const todayK = todayKey(day);
+      const today = dayStatus(todayK, true);
+      // Today only counts if predicate true; if not, streak is 0.
+      if (predicate(today)) count = 1;
+      else return 0;
+      for (let i = 1; i < 365; i++) {
+        const d = new Date(day);
+        d.setDate(d.getDate() - i);
+        const k = todayKey(d);
+        const status = dayStatus(k, false);
+        // If there's literally no record for this day at all, treat the
+        // streak as ended (avoid counting blank historical days).
+        if (!status.mealLogged && !workoutDays.has(k) && Number(load(`steps:${k}`, 0)) === 0) break;
+        if (!predicate(status)) break;
+        count++;
+      }
+      return count;
+    }
+
+    return {
+      meal: streakBy((s) => s.meal),
+      workout: streakBy((s) => s.workout),
+      steps: streakBy((s) => s.steps),
+      all: streakBy((s) => s.meal && s.workout && s.steps),
+    };
+  }, [meals, cheats, customFoods, steps, history, profile?.stepAdjust?.baseline]);
 
   // ----- IF timer status -----
   const ifStatus = useMemo(() => {
@@ -1081,6 +1165,7 @@ export function AppProvider({ children }) {
     dayTotals, dailyTargetKcal,
     calc, // calcMeal pre-bound with customFoods
     streak,
+    streaks,
     ifStatus,
     now,
     // workout

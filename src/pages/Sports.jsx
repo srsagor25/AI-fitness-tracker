@@ -71,8 +71,8 @@ export function Sports() {
       <Card>
         <CardHeader
           kicker="Activity"
-          title="Sports"
-          subtitle={`Today: ${todaysSessions.length} session${todaysSessions.length === 1 ? "" : "s"} · ${Math.round(todaysSportsKcal)} kcal burned`}
+          title="Sports & Others"
+          subtitle={`Team sports, outdoor activity, studio sessions — anything that burns kcal. Today: ${todaysSessions.length} session${todaysSessions.length === 1 ? "" : "s"} · ${Math.round(todaysSportsKcal)} kcal.`}
           right={
             <Button
               variant="outline"
@@ -156,7 +156,7 @@ export function Sports() {
       <Card>
         <CardHeader
           kicker="History"
-          title="All Sport Sessions"
+          title="All Activity Sessions"
           subtitle={`${totals.count} sessions · ${totals.totalMin} min · ${Math.round(totals.totalKcal).toLocaleString()} kcal · ${filterLabel(filter)}`}
         />
         <div className="mb-3">
