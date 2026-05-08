@@ -29,11 +29,17 @@ export const FOODS = {
 
 export const GROCERY_CATEGORIES = ["Protein", "Dairy & Shake", "Aromatics", "Moshla", "Fresh", "Pantry"];
 
-const SAIDUR_DAY_TYPES = [
-  { id: "rest",     label: "Rest Day",     icon: "🛏️", color: "#6b5a3e", target: 2400, suggestShake: "shake_standard" },
-  { id: "push",     label: "Push Day",     icon: "💪", color: "#c44827", target: 2700, suggestShake: "shake_power" },
-  { id: "pull",     label: "Pull Day",     icon: "🎯", color: "#c44827", target: 2700, suggestShake: "shake_power" },
-  { id: "legs",     label: "Leg Day",      icon: "🦵", color: "#c44827", target: 2700, suggestShake: "shake_power" },
+// Rest-day defaults are kept on the profile rather than per-program — every
+// program implicitly gets a "rest" entry, and the user can edit its target
+// once in Profile.
+const SAIDUR_REST_DAY = {
+  id: "rest", label: "Rest Day", icon: "🛏️", color: "#6b5a3e", target: 2400, suggestShake: "shake_standard",
+};
+
+// Extras layer on top of whatever the active program supplies. Useful for
+// recurring activities that aren't part of a workout program (e.g. football
+// nights). The user can edit/add/remove these in Profile.
+const SAIDUR_EXTRA_DAY_TYPES = [
   { id: "football", label: "Football Day", icon: "⚽", color: "#4a6b3e", target: 2750, suggestShake: "shake_power" },
 ];
 
@@ -156,7 +162,8 @@ export const SAIDUR_PROFILE = {
   proteinTarget: 180,
   cheatBaselineKcal: 1019,
   stepAdjust: { lowThreshold: 8000, highThreshold: 12000, lowDelta: -100, highDelta: 100, baseline: 10000 },
-  dayTypes: SAIDUR_DAY_TYPES,
+  restDayType: SAIDUR_REST_DAY,
+  extraDayTypes: SAIDUR_EXTRA_DAY_TYPES,
   lunchPresets: SAIDUR_LUNCH_PRESETS,
   shakePresets: SAIDUR_SHAKE_PRESETS,
   dinnerPresets: SAIDUR_DINNER_PRESETS,
@@ -168,10 +175,11 @@ export const SAIDUR_PROFILE = {
   lightDinnerKey: "dinner_fish_light",
 };
 
-const BLANK_DAY_TYPES = [
-  { id: "rest",     label: "Rest Day",     icon: "🛏️", color: "#6b5a3e", target: 2000, suggestShake: null },
-  { id: "training", label: "Training Day", icon: "💪", color: "#c44827", target: 2400, suggestShake: null },
-  { id: "cardio",   label: "Cardio Day",   icon: "🏃", color: "#4a6b3e", target: 2200, suggestShake: null },
+const BLANK_REST_DAY = {
+  id: "rest", label: "Rest Day", icon: "🛏️", color: "#6b5a3e", target: 2000, suggestShake: null,
+};
+const BLANK_EXTRA_DAY_TYPES = [
+  { id: "cardio", label: "Cardio Day", icon: "🏃", color: "#4a6b3e", target: 2200, suggestShake: null },
 ];
 
 export const BLANK_PROFILE = {
@@ -193,7 +201,8 @@ export const BLANK_PROFILE = {
   proteinTarget: 150,
   cheatBaselineKcal: 1000,
   stepAdjust: { lowThreshold: 8000, highThreshold: 12000, lowDelta: -100, highDelta: 100, baseline: 10000 },
-  dayTypes: BLANK_DAY_TYPES,
+  restDayType: BLANK_REST_DAY,
+  extraDayTypes: BLANK_EXTRA_DAY_TYPES,
   lunchPresets: { lunch_simple: { key: "lunch_simple", name: "Simple Lunch", icon: "🍽️",
     items: [{ food: "chicken_breast", amount: 200 }, { food: "rice", amount: 150 }, { food: "cucumber", amount: 100 }] } },
   shakePresets: { shake_simple: { key: "shake_simple", name: "Simple Shake", icon: "🥤",
@@ -220,6 +229,56 @@ export const TEMPLATES = { saidur: SAIDUR_PROFILE, blank: BLANK_PROFILE };
 
 export function cloneTemplate(template) {
   return JSON.parse(JSON.stringify(template));
+}
+
+// Build the day-type chip list for the Diet tab from the active workout
+// program plus the profile's rest day and any user-defined extras (e.g.
+// football). This keeps the chips and their kcal targets in sync with the
+// program selected on the Activity tab — switching programs swaps the
+// available day types automatically.
+//
+// Rules:
+//   1. Always include the rest day type (from profile.restDayType, with a
+//      sane fallback so older profiles keep working).
+//   2. For each day in activeProgram.days, derive a day type using its
+//      target/icon/accent. If the program day omits a target, fall back to
+//      a default training target.
+//   3. Append profile.extraDayTypes (deduped by id — if a program already
+//      defines a "football" day, the program version wins).
+export function composeDayTypes(activeProgram, profile = {}) {
+  const out = [];
+  const seen = new Set();
+
+  const rest =
+    profile.restDayType ||
+    { id: "rest", label: "Rest Day", icon: "🛏️", color: "#6b5a3e", target: 2200, suggestShake: null };
+  out.push(rest);
+  seen.add(rest.id);
+
+  if (activeProgram && Array.isArray(activeProgram.days)) {
+    for (const d of activeProgram.days) {
+      if (!d || !d.id || seen.has(d.id)) continue;
+      out.push({
+        id: d.id,
+        label: d.label || (d.name ? `${d.name} Day` : d.id),
+        icon: d.icon || "💪",
+        color: d.accent || d.color || "#c44827",
+        target: Number(d.target) || 2500,
+        suggestShake: d.suggestShake || null,
+        fromProgram: activeProgram.id,
+      });
+      seen.add(d.id);
+    }
+  }
+
+  const extras = Array.isArray(profile.extraDayTypes) ? profile.extraDayTypes : [];
+  for (const e of extras) {
+    if (!e || !e.id || seen.has(e.id)) continue;
+    out.push(e);
+    seen.add(e.id);
+  }
+
+  return out;
 }
 
 // Look up a food by key, merging the base FOODS entry with any user override.

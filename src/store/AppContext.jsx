@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { load, save, listKeys, remove } from "./storage.js";
 import { BUILTIN_PROGRAMS } from "./defaults.js";
-import { TEMPLATES, cloneTemplate, calcMeal, ingredientDeltas, FOODS } from "./profiles.js";
+import { TEMPLATES, cloneTemplate, calcMeal, ingredientDeltas, FOODS, composeDayTypes } from "./profiles.js";
 import { DEFAULT_SPORTS, estimateSportKcal } from "./sports.js";
 import { todayKey, dayOfWeek } from "../lib/time.js";
 import { estimateWorkoutKcal } from "../lib/calories.js";
@@ -65,7 +65,7 @@ export function AppProvider({ children }) {
     }
     return [];
   });
-  const [dayTypeId, setDayTypeId] = useState(() => load(`dayType:${dateKey}`, profile.dayTypes[0]?.id || "rest"));
+  const [dayTypeId, setDayTypeId] = useState(() => load(`dayType:${dateKey}`, "rest"));
   const [medsTakenToday, setMedsTakenToday] = useState(() => load(`meds:taken:${dateKey}`, []));
   // Sleep: { hours, bedTime?, wakeTime?, quality? } stored per day.
   const [sleep, setSleep] = useState(() => load(`sleep:${dateKey}`, null));
@@ -117,6 +117,35 @@ export function AppProvider({ children }) {
     setTimeout(() => {
       setSnackbar((s) => (s && s.id === id ? null : s));
     }, 2200);
+  }, []);
+
+  // One-time migration: older saved profiles stored a flat `dayTypes` array
+  // and no `restDayType`/`extraDayTypes`. Convert here so the composed
+  // day-type list matches the new program-driven scheme.
+  useEffect(() => {
+    setProfile((p) => {
+      if (p.restDayType && Array.isArray(p.extraDayTypes)) return p;
+      const legacy = Array.isArray(p.dayTypes) ? p.dayTypes : [];
+      const programDayIds = new Set();
+      for (const prog of Object.values(BUILTIN_PROGRAMS)) {
+        for (const d of prog.days || []) programDayIds.add(d.id);
+      }
+      const restFromLegacy = legacy.find((d) => d.id === "rest");
+      const restDayType =
+        p.restDayType ||
+        restFromLegacy ||
+        { id: "rest", label: "Rest Day", icon: "🛏️", color: "#6b5a3e", target: 2200, suggestShake: null };
+      // Anything in the legacy list that isn't "rest" and isn't already a
+      // program day id becomes an extra day type (e.g. football).
+      const extras =
+        Array.isArray(p.extraDayTypes) && p.extraDayTypes.length > 0
+          ? p.extraDayTypes
+          : legacy.filter((d) => d.id !== "rest" && !programDayIds.has(d.id));
+      const next = { ...p, restDayType, extraDayTypes: extras };
+      delete next.dayTypes;
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // One-time migration: merge perishable info from latest templates into
@@ -185,19 +214,13 @@ export function AppProvider({ children }) {
     setMeals(blankMeals());
     setCheats([]);
     setSteps(0);
-    setDayTypeId(fresh.dayTypes[0]?.id || "rest");
+    setDayTypeId("rest");
     showSnack(`Loaded ${tpl.name} profile`);
   }
 
   function updateProfile(patch) {
     setProfile((p) => ({ ...p, ...patch, stats: { ...p.stats, ...(patch.stats || {}) } }));
   }
-
-  // ----- Day type / target -----
-  const dayType = useMemo(
-    () => profile.dayTypes.find((d) => d.id === dayTypeId) || profile.dayTypes[0],
-    [profile.dayTypes, dayTypeId],
-  );
 
   const stepAdjustKcal = useMemo(() => {
     const sa = profile.stepAdjust || {};
@@ -221,6 +244,24 @@ export function AppProvider({ children }) {
       setWeeks((w) => ({ ...w, [activeProgram.id]: [...activeProgram.defaultWeek] }));
     }
   }, [activeProgram, weeks]);
+
+  // ----- Day types (derived from active program + profile rest/extras) -----
+  const dayTypes = useMemo(
+    () => composeDayTypes(activeProgram, profile),
+    [activeProgram, profile],
+  );
+  const dayType = useMemo(
+    () => dayTypes.find((d) => d.id === dayTypeId) || dayTypes[0],
+    [dayTypes, dayTypeId],
+  );
+  // If the saved dayTypeId is no longer in the composed list (e.g. user
+  // switched programs and the previous day id doesn't exist anymore), fall
+  // back to "rest" so chips and target stay coherent.
+  useEffect(() => {
+    if (!dayTypes.some((d) => d.id === dayTypeId)) {
+      setDayTypeId("rest");
+    }
+  }, [dayTypes, dayTypeId]);
 
   const todayWeekIndex = dayOfWeek();
   const todaysDayId = (weeks[activeProgram.id] || activeProgram.defaultWeek)[todayWeekIndex];
@@ -895,7 +936,7 @@ export function AppProvider({ children }) {
     steps, setSteps, stepAdjustKcal,
     waterLog, addWaterEntry, removeWaterEntry,
     sleep, setSleepEntry, clearSleep,
-    dayTypeId, setDayTypeId, dayType,
+    dayTypeId, setDayTypeId, dayType, dayTypes,
     clearDay,
     // totals + helpers
     dayTotals, dailyTargetKcal,

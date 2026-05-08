@@ -57,6 +57,7 @@ export function Progress() {
     bodyPhotos,
     addBodyPhoto,
     removeBodyPhoto,
+    dayTypes,
   } = useApp();
 
   const [windowDays, setWindowDays] = useState(30);
@@ -261,6 +262,7 @@ export function Progress() {
             profile={profile}
             windowDays={windowDays}
             sortedMeasurements={sorted}
+            dayTypes={dayTypes}
           />
 
           {/* History list */}
@@ -961,7 +963,7 @@ function PhotoPanel({ p, label }) {
 
 const MEAL_SLOTS = ["lunch", "shake", "dinner", "snack"];
 
-function EstimatedWeightChange({ profile, windowDays, sortedMeasurements }) {
+function EstimatedWeightChange({ profile, windowDays, sortedMeasurements, dayTypes = [] }) {
   const data = useMemo(() => {
     const out = [];
     const days = windowDays || 30;
@@ -980,8 +982,8 @@ function EstimatedWeightChange({ profile, windowDays, sortedMeasurements }) {
         }
         for (const c of cheats || []) kcalIn += calcMeal(c.items).kcal;
 
-        const dayTypeId = load(`dayType:${k}`, profile.dayTypes[0]?.id || "rest");
-        const dayType = profile.dayTypes.find((dt) => dt.id === dayTypeId) || profile.dayTypes[0];
+        const dayTypeId = load(`dayType:${k}`, "rest");
+        const dayType = dayTypes.find((dt) => dt.id === dayTypeId) || dayTypes[0];
         const baseTarget = dayType?.target || dailyTarget(profile);
 
         const stepsCount = load(`steps:${k}`, 0);
@@ -1024,7 +1026,7 @@ function EstimatedWeightChange({ profile, windowDays, sortedMeasurements }) {
       cursor.setDate(cursor.getDate() - 1);
     }
     return { entries: out.reverse(), cumKcal, cumKg: kcalToKg(cumKcal) };
-  }, [windowDays, profile]);
+  }, [windowDays, profile, dayTypes]);
 
   // Match window of measured weights for side-by-side comparison.
   const cutoff = Date.now() - (windowDays || 30) * 86400000;

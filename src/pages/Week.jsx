@@ -21,7 +21,7 @@ function lastNDays(n) {
 }
 
 export function Week() {
-  const { profile, history, customFoods } = useApp();
+  const { profile, history, customFoods, dayTypes } = useApp();
   const days = lastNDays(7);
 
   // Pull each day's data from storage
@@ -30,9 +30,11 @@ export function Week() {
       const k = todayKey(d);
       const meals = load(`meals:${k}`, { lunch: [], shake: [], dinner: [], snack: [] });
       const cheats = load(`cheats:${k}`, []);
-      const dayTypeId = load(`dayType:${k}`, profile.dayTypes[0]?.id || "rest");
+      const dayTypeId = load(`dayType:${k}`, "rest");
       const steps = load(`steps:${k}`, 0);
-      const dayType = profile.dayTypes.find((dt) => dt.id === dayTypeId) || profile.dayTypes[0];
+      const dayType =
+        dayTypes.find((dt) => dt.id === dayTypeId) ||
+        dayTypes[0] || { id: "rest", label: "Rest", icon: "🛏️", color: "#6b5a3e", target: 2200 };
 
       const allMeals = [...meals.lunch, ...meals.shake, ...meals.dinner, ...meals.snack, ...cheats];
       let kcal = 0;
@@ -68,7 +70,7 @@ export function Week() {
         steps,
       };
     });
-  }, [days, profile, history, customFoods]);
+  }, [days, profile, history, customFoods, dayTypes]);
 
   const totals = useMemo(() => {
     const out = {

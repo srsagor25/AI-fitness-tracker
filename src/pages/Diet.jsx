@@ -45,6 +45,7 @@ export function Diet() {
     dayTypeId,
     setDayTypeId,
     dayType,
+    dayTypes,
     dayTotals,
     dailyTargetKcal,
     todaysWorkoutKcal,
@@ -137,7 +138,7 @@ export function Diet() {
 
         {/* Day-type chips */}
         <div className="flex flex-wrap gap-2 mb-4">
-          {profile.dayTypes.map((dt) => (
+          {dayTypes.map((dt) => (
             <button
               key={dt.id}
               onClick={() => setDayTypeId(dt.id)}

@@ -60,6 +60,8 @@ export function Programs() {
           id: uid("day"),
           name: "Day 1",
           accent: "#c44827",
+          icon: "💪",
+          target: 2500,
           exercises: [{ id: uid("ex"), name: "", sets: 3, reps: 10, restSec: 90, url: "" }],
         },
       ],
@@ -122,8 +124,11 @@ export function Programs() {
                         key={d.id}
                         className="font-mono text-[9px] uppercase tracking-[0.2em] px-2 py-0.5 text-paper"
                         style={{ backgroundColor: d.accent }}
+                        title={d.target ? `${d.target} kcal target` : undefined}
                       >
+                        {d.icon ? `${d.icon} ` : ""}
                         {d.name}
+                        {d.target ? ` · ${d.target}` : ""}
                       </span>
                     ))}
                   </div>
@@ -236,6 +241,8 @@ function ProgramEditorModal({ program, library, onClose, onSave }) {
           id: uid("day"),
           name: `Day ${d.days.length + 1}`,
           accent: ACCENT_PALETTE[d.days.length % ACCENT_PALETTE.length],
+          icon: "💪",
+          target: 2500,
           exercises: [{ id: uid("ex"), name: "", sets: 3, reps: 10, restSec: 90, url: "" }],
         },
       ],
@@ -329,9 +336,17 @@ function ProgramEditorModal({ program, library, onClose, onSave }) {
                 <div className="flex gap-2 mb-3 flex-wrap items-end">
                   <Field label="Day name">
                     <TextInput
-                      className="!w-48"
+                      className="!w-40"
                       value={day.name}
                       onChange={(e) => updateDay(day.id, { name: e.target.value })}
+                    />
+                  </Field>
+                  <Field label="Icon">
+                    <TextInput
+                      className="!w-20"
+                      value={day.icon || ""}
+                      onChange={(e) => updateDay(day.id, { icon: e.target.value })}
+                      placeholder="💪"
                     />
                   </Field>
                   <Field label="Accent">
@@ -346,6 +361,18 @@ function ProgramEditorModal({ program, library, onClose, onSave }) {
                         </option>
                       ))}
                     </Select>
+                  </Field>
+                  <Field label="Eating target (kcal)" hint="Drives Diet target on this day type.">
+                    <TextInput
+                      type="number"
+                      className="!w-32"
+                      value={day.target ?? 2500}
+                      onChange={(e) =>
+                        updateDay(day.id, {
+                          target: Math.max(1200, Math.round(Number(e.target.value) || 0)),
+                        })
+                      }
+                    />
                   </Field>
                   {draft.days.length > 1 && (
                     <IconButton onClick={() => deleteDay(day.id)} aria-label="Delete day">
