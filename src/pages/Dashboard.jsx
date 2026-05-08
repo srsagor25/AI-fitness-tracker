@@ -46,6 +46,8 @@ export function Dashboard({ setTab }) {
     dailyTargetKcal,
     todaysWorkoutKcal,
     todaysSportsKcal,
+    todaysStepsKcal,
+    todaysActivityKcal,
     todaysDay,
     todaysDayId,
     activeProgram,
@@ -69,7 +71,17 @@ export function Dashboard({ setTab }) {
     addMeasurement,
     sleep,
     setSleepEntry,
+    sportsLog,
+    logDose,
+    burnSuggestion,
+    customTasks,
+    addCustomTask,
+    toggleCustomTask,
+    removeCustomTask,
   } = useApp();
+  const [showAddTask, setShowAddTask] = useState(false);
+  const [newTaskLabel, setNewTaskLabel] = useState("");
+  const [newTaskTime, setNewTaskTime] = useState("");
 
   const remaining = dailyTargetKcal - dayTotals.kcal;
 
@@ -316,6 +328,77 @@ export function Dashboard({ setTab }) {
     const suppRem = buildPharmaReminder("supplement", "Supps", "supplements");
     if (suppRem) list.push(suppRem);
 
+    // Steps progress — show as a reminder so the user can track + quick-add
+    // from the Today panel. Goal hit → "done"; partial → "scheduled".
+    const stepBaseline = profile.stepAdjust?.baseline || 10000;
+    const stepsHit = steps >= stepBaseline;
+    list.push({
+      id: "steps",
+      icon: Footprints,
+      domain: "steps",
+      label: stepsHit ? "Steps goal hit" : "Steps",
+      detail: stepsHit
+        ? `${steps.toLocaleString()} / ${stepBaseline.toLocaleString()} ✓`
+        : `${steps.toLocaleString()} / ${stepBaseline.toLocaleString()} · tap to log more`,
+      countdown: null,
+      urgency: stepsHit ? "done" : steps > 0 ? "scheduled" : "info",
+      targetTab: "activity/steps",
+      action: { kind: "steps-add", amount: 1000 },
+    });
+
+    // Sports — surface today's sessions; if none, show as info so the user
+    // can jump to log one.
+    const sportsToday = (sportsLog || []).filter(
+      (s) => new Date(s.date).toDateString() === nowDate.toDateString(),
+    );
+    if (sportsToday.length > 0) {
+      const totalKcal = sportsToday.reduce((s, x) => s + (Number(x.kcal) || 0), 0);
+      list.push({
+        id: "sports",
+        icon: Flame,
+        domain: "sports",
+        emoji: sportsToday[0].sportIcon,
+        label: `Sports logged · ${sportsToday.length}`,
+        detail: `${sportsToday.map((s) => s.sportName).join(", ")} · ${totalKcal} kcal`,
+        countdown: null,
+        urgency: "done",
+        targetTab: "activity/sports",
+      });
+    } else {
+      list.push({
+        id: "sports",
+        icon: Flame,
+        domain: "sports",
+        label: "Any sports today?",
+        detail: "Tap to log a session (football, padel, …)",
+        countdown: null,
+        urgency: "info",
+        targetTab: "activity/sports",
+      });
+    }
+
+    // Custom user tasks — render after the auto-derived reminders.
+    for (const t of customTasks || []) {
+      const dueMs = t.dueAt ? (timeToToday(t.dueAt) - nowDate) : null;
+      list.push({
+        id: `task-${t.id}`,
+        icon: t.done ? CheckCircle2 : Clock,
+        domain: "task",
+        label: t.label,
+        detail: t.detail || (t.dueAt ? `Due ${t.dueAt}` : "Custom task"),
+        countdown: t.done ? null : dueMs,
+        urgency: t.done
+          ? "done"
+          : dueMs != null && dueMs < 0
+            ? "late"
+            : dueMs != null && dueMs < 3600000
+              ? "soon"
+              : "info",
+        action: { kind: "task-toggle", taskId: t.id, done: t.done },
+        taskId: t.id,
+      });
+    }
+
     return { list, fmtCountdown };
   }, [
     now,
@@ -326,10 +409,14 @@ export function Dashboard({ setTab }) {
     todaysDayId,
     profile.workoutTime,
     profile.mealTimes,
+    profile.stepAdjust?.baseline,
     meals,
     grocery,
     meds,
     medsTakenToday,
+    steps,
+    sportsLog,
+    customTasks,
   ]);
   const proteinPct = profile.proteinTarget
     ? Math.round((dayTotals.protein / profile.proteinTarget) * 100)
@@ -388,8 +475,52 @@ export function Dashboard({ setTab }) {
         <CardHeader
           kicker="Reminders"
           title="What's pending today"
-          subtitle="Live countdowns across diet, training, grocery, meds and supplements."
+          subtitle="Live countdowns + quick actions. Add custom tasks for anything else."
+          right={
+            <Button variant="outline" size="sm" onClick={() => setShowAddTask((s) => !s)}>
+              {showAddTask ? "Cancel" : "+ Add task"}
+            </Button>
+          }
         />
+        {showAddTask && (
+          <div className="border-2 border-ink p-3 mb-3 grid grid-cols-1 md:grid-cols-[1fr_120px_auto] gap-2">
+            <input
+              type="text"
+              value={newTaskLabel}
+              onChange={(e) => setNewTaskLabel(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && newTaskLabel.trim()) {
+                  addCustomTask({ label: newTaskLabel, dueAt: newTaskTime });
+                  setNewTaskLabel("");
+                  setNewTaskTime("");
+                  setShowAddTask(false);
+                }
+              }}
+              placeholder="e.g. Call mom, 5 min stretch, Weigh in"
+              className="border-2 border-ink bg-paper px-2 py-1.5 font-body text-base focus:outline-none focus:border-accent"
+              autoFocus
+            />
+            <input
+              type="time"
+              value={newTaskTime}
+              onChange={(e) => setNewTaskTime(e.target.value)}
+              className="border-2 border-ink bg-paper px-2 py-1.5 font-body text-base focus:outline-none focus:border-accent"
+            />
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => {
+                if (!newTaskLabel.trim()) return;
+                addCustomTask({ label: newTaskLabel, dueAt: newTaskTime });
+                setNewTaskLabel("");
+                setNewTaskTime("");
+                setShowAddTask(false);
+              }}
+            >
+              Save
+            </Button>
+          </div>
+        )}
         {reminders.list.length === 0 ? (
           <p className="font-body italic text-ink-muted">
             Nothing pending — you're caught up. Quick Log below for fast entries.
@@ -398,18 +529,16 @@ export function Dashboard({ setTab }) {
           <ul className="grid grid-cols-1 md:grid-cols-2 gap-2">
             {reminders.list.map((r) => {
               const Icon = r.icon;
-              // Per-urgency palette: numbers pop in saturated colors against
-              // the paper background; the left border + icon match.
               const colors = {
-                now:       { border: "#c44827", num: "#c44827", bg: "#fde6df" },
-                late:      { border: "#c44827", num: "#c44827", bg: "#fde6df" },
-                soon:      { border: "#d97a2c", num: "#d97a2c", bg: "#fdeed8" },
-                scheduled: { border: "#3b6aa3", num: "#3b6aa3", bg: "#dde8f4" },
-                done:      { border: "#4a6b3e", num: "#4a6b3e", bg: "#dde8d6" },
-                info:      { border: "#6b5a3e", num: "#6b5a3e", bg: "#ece4d4" },
+                now:       { border: "#c44827", num: "#c44827" },
+                late:      { border: "#c44827", num: "#c44827" },
+                soon:      { border: "#d97a2c", num: "#d97a2c" },
+                scheduled: { border: "#3b6aa3", num: "#3b6aa3" },
+                done:      { border: "#4a6b3e", num: "#4a6b3e" },
+                info:      { border: "#6b5a3e", num: "#6b5a3e" },
               };
               const c = colors[r.urgency] || colors.info;
-              const onClick = () => {
+              const navigate = () => {
                 if (r.targetTab) return setTab(r.targetTab);
                 setTab(
                   r.domain === "diet"
@@ -426,12 +555,88 @@ export function Dashboard({ setTab }) {
                 );
               };
               const cd = r.countdown != null ? reminders.fmtCountdown(r.countdown) : null;
-              return (
-                <li key={r.id}>
+              // Per-domain quick action — keeps the user on Today for fast logs.
+              let quickAction = null;
+              if (r.domain === "steps") {
+                quickAction = (
                   <button
-                    onClick={onClick}
-                    className="w-full text-left border-2 border-ink p-3 hover:bg-ink/5 transition-colors flex items-start gap-3"
-                    style={{ borderLeftColor: c.border, borderLeftWidth: 6 }}
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSteps(steps + 1000);
+                    }}
+                    className="font-mono text-[10px] uppercase tracking-[0.2em] border-2 border-ink px-2 py-1 hover:bg-ink hover:text-paper"
+                    title="Add 1000 steps"
+                  >
+                    +1k
+                  </button>
+                );
+              } else if (
+                (r.domain === "med" || r.domain === "supplement") &&
+                r.urgency !== "done"
+              ) {
+                // For meds/supps, find the next un-taken item and offer a one-tap log.
+                const upcoming = (meds || []).find(
+                  (m) =>
+                    (m.category || "med") === r.domain &&
+                    !medsTakenToday.some((d) => d.medId === m.id),
+                );
+                if (upcoming) {
+                  quickAction = (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        logDose(upcoming);
+                      }}
+                      className="font-mono text-[10px] uppercase tracking-[0.2em] border-2 border-ink px-2 py-1 hover:bg-ink hover:text-paper whitespace-nowrap"
+                    >
+                      Take ✓
+                    </button>
+                  );
+                }
+              } else if (r.domain === "task" && r.taskId) {
+                quickAction = (
+                  <div className="flex gap-1">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleCustomTask(r.taskId);
+                      }}
+                      className={`font-mono text-[10px] uppercase tracking-[0.2em] border-2 border-ink px-2 py-1 ${
+                        r.urgency === "done"
+                          ? "bg-ink text-paper"
+                          : "hover:bg-ink hover:text-paper"
+                      }`}
+                    >
+                      {r.urgency === "done" ? "✓" : "Mark"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removeCustomTask(r.taskId);
+                      }}
+                      className="font-mono text-[10px] uppercase tracking-[0.2em] border-2 border-ink px-2 py-1 hover:bg-ink hover:text-paper"
+                      title="Delete task"
+                    >
+                      ×
+                    </button>
+                  </div>
+                );
+              }
+
+              return (
+                <li
+                  key={r.id}
+                  className="border-2 border-ink hover:bg-ink/5 transition-colors flex items-stretch"
+                  style={{ borderLeftColor: c.border, borderLeftWidth: 6 }}
+                >
+                  <button
+                    type="button"
+                    onClick={navigate}
+                    className="flex-1 min-w-0 text-left p-3 flex items-start gap-3"
                   >
                     <span className="shrink-0 mt-0.5 text-xl" style={{ color: c.border }}>
                       {r.emoji || <Icon size={20} />}
@@ -448,31 +653,73 @@ export function Dashboard({ setTab }) {
                         {r.detail}
                       </div>
                     </div>
-                    {cd && (
-                      <div
-                        className="shrink-0 self-stretch flex flex-col items-end justify-center px-2 border-l-2 border-ink/20"
-                      >
-                        <span
-                          className="font-display font-black tabular-nums leading-none text-lg md:text-xl"
-                          style={{ color: c.num }}
-                        >
-                          {cd.num}
-                        </span>
-                        <span
-                          className="font-mono text-[9px] uppercase tracking-[0.25em] mt-0.5"
-                          style={{ color: c.num, opacity: 0.7 }}
-                        >
-                          {cd.suffix}
-                        </span>
-                      </div>
-                    )}
                   </button>
+                  {(cd || quickAction) && (
+                    <div className="shrink-0 self-stretch flex items-center gap-2 pr-3 pl-2 border-l-2 border-ink/20">
+                      {cd && (
+                        <div className="flex flex-col items-end">
+                          <span
+                            className="font-display font-black tabular-nums leading-none text-lg md:text-xl"
+                            style={{ color: c.num }}
+                          >
+                            {cd.num}
+                          </span>
+                          <span
+                            className="font-mono text-[9px] uppercase tracking-[0.25em] mt-0.5"
+                            style={{ color: c.num, opacity: 0.7 }}
+                          >
+                            {cd.suffix}
+                          </span>
+                        </div>
+                      )}
+                      {quickAction}
+                    </div>
+                  )}
                 </li>
               );
             })}
           </ul>
         )}
       </Card>
+
+      {/* Goal-aware burn suggestion. Only visible when there's a real gap. */}
+      {burnSuggestion && burnSuggestion.gap > 0 && (
+        <Card>
+          <CardHeader
+            kicker={`Coach · ${burnSuggestion.goalKey}`}
+            title={`Burn ~${burnSuggestion.gap} kcal to stay on goal`}
+            subtitle={`Eaten ${burnSuggestion.eaten} kcal · target ${burnSuggestion.target} (+ already burned ${todaysActivityKcal})`}
+          />
+          <ul className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            {burnSuggestion.ideas.map((idea, i) => {
+              const tab =
+                idea.kind === "steps"
+                  ? "activity/steps"
+                  : idea.kind === "sport"
+                    ? "activity/sports"
+                    : "activity/workout";
+              return (
+                <li key={i}>
+                  <button
+                    onClick={() => setTab(tab)}
+                    className="w-full text-left border-2 border-ink p-3 hover:bg-ink/5 transition-colors"
+                  >
+                    <div className="font-display text-base font-bold">{idea.label}</div>
+                    <div className="font-mono text-[9px] uppercase tracking-[0.25em] text-ink-muted mt-1">
+                      ≈ {idea.kcal} kcal · tap to start
+                    </div>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </Card>
+      )}
+      {burnSuggestion && burnSuggestion.gap === 0 && burnSuggestion.eaten > 0 && (
+        <Card>
+          <CardHeader kicker={`Coach · ${burnSuggestion.goalKey}`} title="On goal" subtitle={burnSuggestion.message} />
+        </Card>
+      )}
 
       <QuickLog
         addWaterEntry={addWaterEntry}

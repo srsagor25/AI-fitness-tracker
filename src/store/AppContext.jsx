@@ -4,7 +4,7 @@ import { BUILTIN_PROGRAMS } from "./defaults.js";
 import { TEMPLATES, cloneTemplate, calcMeal, ingredientDeltas, FOODS, composeDayTypes } from "./profiles.js";
 import { DEFAULT_SPORTS, estimateSportKcal } from "./sports.js";
 import { todayKey, dayOfWeek } from "../lib/time.js";
-import { estimateWorkoutKcal } from "../lib/calories.js";
+import { estimateWorkoutKcal, stepsToKcal, dailyTarget, tdee } from "../lib/calories.js";
 
 const AppContext = createContext(null);
 
@@ -74,6 +74,9 @@ export function AppProvider({ children }) {
     return stored === "rest" ? "rest" : "workout";
   });
   const [medsTakenToday, setMedsTakenToday] = useState(() => load(`meds:taken:${dateKey}`, []));
+  // Custom one-off reminders the user adds to today. Shape:
+  // { id, label, detail?, dueAt? (HH:MM), done, ts }
+  const [customTasks, setCustomTasks] = useState(() => load(`tasks:${dateKey}`, []));
   // Sleep: { hours, bedTime?, wakeTime?, quality? } stored per day.
   const [sleep, setSleep] = useState(() => load(`sleep:${dateKey}`, null));
 
@@ -220,6 +223,7 @@ export function AppProvider({ children }) {
     else save(`dayType:${dateKey}`, dayTypeId);
   }, [dayTypeId, dateKey]);
   useEffect(() => save(`meds:taken:${dateKey}`, medsTakenToday), [medsTakenToday, dateKey]);
+  useEffect(() => save(`tasks:${dateKey}`, customTasks), [customTasks, dateKey]);
   useEffect(() => {
     if (sleep) save(`sleep:${dateKey}`, sleep);
     else save(`sleep:${dateKey}`, null);
@@ -325,10 +329,17 @@ export function AppProvider({ children }) {
       .reduce((sum, s) => sum + (Number(s.kcal) || 0), 0);
   }, [sportsLog, dateKey]);
 
-  // Combined activity kcal — used by Today's Burning panel and the daily
-  // eating target adjustment so that an evening football game lifts your
-  // calorie budget the same way a workout would.
-  const todaysActivityKcal = todaysWorkoutKcal + todaysSportsKcal;
+  // Steps → kcal using bodyweight-scaled MET estimate. Combined with workout
+  // and sports so the daily eating target reflects everything you actually
+  // burned, not just gym sessions.
+  const todaysStepsKcal = useMemo(
+    () => stepsToKcal(steps, profile.stats?.weightKg || 70),
+    [steps, profile.stats?.weightKg],
+  );
+
+  // Combined activity kcal — workout + sports + walking. Drives both the
+  // Today panel and the daily eating-target adjustment.
+  const todaysActivityKcal = todaysWorkoutKcal + todaysSportsKcal + todaysStepsKcal;
 
   // ----- Diet totals (using customFoods overrides) -----
   const calc = useCallback((items) => calcMeal(items, customFoods), [customFoods]);
@@ -427,12 +438,76 @@ export function AppProvider({ children }) {
     };
   }, [profile.windowStart, profile.windowEnd, now]);
 
-  // ----- Diet target = day-type target + step adjustment + workout kcal bonus -----
+  // Diet target = day-type base + everything you actually burned today
+  // (workout + sports + steps). The legacy stepAdjustKcal threshold bonus
+  // is superseded by the real steps→kcal calc inside todaysActivityKcal.
   const dailyTargetKcal = useMemo(
-    () =>
-      Math.max(1200, (dayType?.target || 2000) + stepAdjustKcal + todaysActivityKcal),
-    [dayType, stepAdjustKcal, todaysActivityKcal],
+    () => Math.max(1200, (dayType?.target || 2000) + todaysActivityKcal),
+    [dayType, todaysActivityKcal],
   );
+
+  // Burn suggestion — given the user's goal (cut/maintain/bulk) and today's
+  // intake so far, estimate how much extra activity (if any) would put them
+  // back on the goal-target curve. We compare today's eaten kcal against
+  // the goal-derived target (TDEE − 500 for cut, etc.) MINUS what they've
+  // already burned, then translate the gap into concrete suggestions.
+  const burnSuggestion = useMemo(() => {
+    const goalKcal = dailyTarget(profile);            // goal-driven target
+    const baseTdee = tdee(profile);                   // maintenance
+    const eaten = Math.round(dayTotals.kcal || 0);
+    // For cut: every kcal burned = more deficit. We want eaten ≤ goalKcal +
+    // burned. If eaten exceeds that, suggest burning the gap.
+    const ceiling = goalKcal + todaysActivityKcal;
+    const surplusVsGoal = eaten - ceiling;
+    const weightKg = profile.stats?.weightKg || 70;
+
+    // Round to a friendly increment.
+    const round25 = (n) => Math.max(0, Math.round(n / 25) * 25);
+
+    // Only suggest a burn when the user is over their goal-target AND there's
+    // a meaningful gap (>50 kcal) to close. For maintain/bulk goals where the
+    // target is at or above TDEE, surplus rarely warrants a forced burn.
+    const goalKey = profile.goalKey || "maintain";
+    if (eaten <= 0) {
+      return {
+        eaten, target: goalKcal, ceiling, gap: 0,
+        message: "No food logged yet — log your first meal to get an activity suggestion.",
+        ideas: [], goalKey, baseTdee,
+      };
+    }
+    if (surplusVsGoal <= 50) {
+      const headroom = -surplusVsGoal;
+      return {
+        eaten, target: goalKcal, ceiling, gap: 0,
+        message:
+          headroom > 50
+            ? `On track — you have ${headroom} kcal headroom before hitting the ${goalKey} target.`
+            : "Right at your goal — keep it steady.",
+        ideas: [], goalKey, baseTdee,
+      };
+    }
+
+    const burnNeeded = round25(surplusVsGoal);
+    // Translate kcal → minutes for typical activities (rough, MET-based):
+    // walking 5 km/h ≈ 3.5 MET, jogging 8 km/h ≈ 8 MET, weights ≈ 5 MET,
+    // football ≈ 7 MET. kcal/min ≈ MET × weightKg / 60.
+    const minutesFor = (met) => Math.max(5, Math.round(burnNeeded / ((met * weightKg) / 60)));
+    // Steps: ~0.04 kcal/step at 70 kg, scaled by weight.
+    const stepsFor = Math.round((burnNeeded / (0.04 * (weightKg / 70))) / 100) * 100;
+
+    const ideas = [
+      { kind: "steps",  label: `Walk ${stepsFor.toLocaleString()} more steps`, kcal: burnNeeded },
+      { kind: "sport",  label: `~${minutesFor(7)} min sports (football/cricket pace)`, kcal: burnNeeded },
+      { kind: "workout", label: `~${minutesFor(5)} min weights session`, kcal: burnNeeded },
+      { kind: "cardio",  label: `~${minutesFor(8)} min jog`, kcal: burnNeeded },
+    ];
+
+    return {
+      eaten, target: goalKcal, ceiling, gap: burnNeeded,
+      message: `+${burnNeeded} kcal over your ${goalKey} target. Burn it off:`,
+      ideas, goalKey, baseTdee,
+    };
+  }, [profile, dayTotals.kcal, todaysActivityKcal]);
 
   // ----- Diet mutators -----
   function logGroceryActivity(entries) {
@@ -496,7 +571,34 @@ export function AppProvider({ children }) {
     setSteps(0);
     setWaterLog([]);
     setMedsTakenToday([]);
+    setCustomTasks([]);
     showSnack("Day cleared");
+  }
+
+  // ----- Custom daily tasks -----
+  function addCustomTask({ label, detail = "", dueAt = "" } = {}) {
+    const text = (label || "").trim();
+    if (!text) return;
+    setCustomTasks((prev) => [
+      ...prev,
+      {
+        id: uid("task"),
+        label: text,
+        detail: detail.trim(),
+        dueAt: dueAt || null,
+        done: false,
+        ts: Date.now(),
+      },
+    ]);
+    showSnack("Task added");
+  }
+  function toggleCustomTask(id) {
+    setCustomTasks((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, done: !t.done } : t)),
+    );
+  }
+  function removeCustomTask(id) {
+    setCustomTasks((prev) => prev.filter((t) => t.id !== id));
   }
 
   // ----- Sleep -----
@@ -972,6 +1074,7 @@ export function AppProvider({ children }) {
     steps, setSteps, stepAdjustKcal,
     waterLog, addWaterEntry, removeWaterEntry,
     sleep, setSleepEntry, clearSleep,
+    customTasks, addCustomTask, toggleCustomTask, removeCustomTask,
     dayTypeId: effectiveDayTypeId, setDayTypeId, dayType, dayTypes,
     clearDay,
     // totals + helpers
@@ -990,7 +1093,8 @@ export function AppProvider({ children }) {
     todaysDay, todaysDayId, todaysWorkoutKcal,
     // sports
     sportsList, sportsLog, addSportSession, removeSportSession, clearSportsLog,
-    saveSport, deleteSport, todaysSportsKcal, todaysActivityKcal,
+    saveSport, deleteSport, todaysSportsKcal, todaysStepsKcal, todaysActivityKcal,
+    burnSuggestion,
     // grocery
     grocery, adjustGrocery, restockGrocery, setGroceryQty,
     saveGroceryItem, removeGroceryItem, resetGroceryToTemplate,

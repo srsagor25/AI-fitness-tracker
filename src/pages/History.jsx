@@ -3,6 +3,7 @@ import { useApp } from "../store/AppContext.jsx";
 import { Card, CardHeader, Stat } from "../components/ui/Card.jsx";
 import { Button } from "../components/ui/Button.jsx";
 import { Chip, ProgressBar } from "../components/ui/Field.jsx";
+import { DateRangeFilter, filterRange, filterLabel } from "../components/ui/DateRangeFilter.jsx";
 import { formatMMSS, todayKey } from "../lib/time.js";
 import { estimateWorkoutKcal } from "../lib/calories.js";
 import { calcMeal } from "../store/profiles.js";
@@ -22,59 +23,21 @@ import {
   Pill,
   TrendingUp,
   TrendingDown,
+  Footprints,
 } from "lucide-react";
 
 const MEAL_SLOTS = ["lunch", "shake", "dinner", "snack"];
 
 const VIEWS = [
   { id: "training", label: "Training", icon: Dumbbell },
-  { id: "diet", label: "Diet", icon: Utensils },
-  { id: "pantry", label: "Pantry", icon: ShoppingBag },
-  { id: "you", label: "You", icon: User },
-  { id: "meds", label: "Meds", icon: Pill },
-  { id: "supps", label: "Supps", icon: Pill },
+  { id: "sports",   label: "Sports",   icon: Flame },
+  { id: "steps",    label: "Steps",    icon: Footprints },
+  { id: "diet",     label: "Diet",     icon: Utensils },
+  { id: "pantry",   label: "Pantry",   icon: ShoppingBag },
+  { id: "you",      label: "You",      icon: User },
+  { id: "meds",     label: "Meds",     icon: Pill },
+  { id: "supps",    label: "Supps",    icon: Pill },
 ];
-
-// Global filter shape: { mode: "preset" | "custom", days?, from?, to? }
-// Sub-views translate this into a from/to ms pair via filterRange().
-const PRESETS = [
-  { id: 7, label: "7 days" },
-  { id: 14, label: "14 days" },
-  { id: 30, label: "30 days" },
-  { id: 90, label: "3 months" },
-  { id: 180, label: "6 months" },
-  { id: 365, label: "1 year" },
-  { id: 0, label: "All time" },
-];
-
-function filterRange(filter) {
-  if (filter.mode === "custom") {
-    const fromMs = filter.from ? new Date(filter.from).getTime() : 0;
-    const toMs = filter.to ? new Date(filter.to + "T23:59:59").getTime() : Date.now();
-    return { from: fromMs, to: toMs };
-  }
-  const days = Number(filter.days) || 0;
-  const to = Date.now();
-  const from = days ? to - days * 86400000 : 0;
-  return { from, to };
-}
-
-function filterLabel(filter) {
-  if (filter.mode === "custom") {
-    const f = filter.from ? new Date(filter.from).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—";
-    const t = filter.to ? new Date(filter.to).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—";
-    return `${f} → ${t}`;
-  }
-  const d = Number(filter.days) || 0;
-  if (d === 0) return "All time";
-  if (d === 7) return "Last 7 days";
-  if (d === 14) return "Last 14 days";
-  if (d === 30) return "Last 30 days";
-  if (d === 90) return "Last 3 months";
-  if (d === 180) return "Last 6 months";
-  if (d === 365) return "Last year";
-  return `Last ${d} days`;
-}
 
 export function History() {
   const {
@@ -87,6 +50,10 @@ export function History() {
     clearGroceryActivity,
     weightLog,
     meds,
+    sportsLog,
+    sportsList,
+    removeSportSession,
+    clearSportsLog,
   } = useApp();
   const [view, setView] = useState("training");
   const [filter, setFilter] = useState({ mode: "preset", days: 30 });
@@ -100,7 +67,7 @@ export function History() {
           subtitle={`Per-section history & summary · ${filterLabel(filter)}`}
         />
         {/* Tab pills */}
-        <div className="grid grid-cols-3 md:grid-cols-6 gap-2 mb-3">
+        <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-8 gap-2 mb-3">
           {VIEWS.map((v) => {
             const Icon = v.icon;
             return (
@@ -117,69 +84,7 @@ export function History() {
           })}
         </div>
 
-        {/* Global filter row */}
-        <div className="border-2 border-ink p-3 bg-ink/5">
-          <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted mb-2">
-            Filter (applies to all sub-views)
-          </div>
-          <div className="flex flex-wrap gap-2 mb-2">
-            {PRESETS.map((p) => (
-              <button
-                key={p.id}
-                onClick={() => setFilter({ mode: "preset", days: p.id })}
-                className={`px-2.5 py-1 border-2 font-mono text-[10px] uppercase tracking-[0.2em] ${
-                  filter.mode === "preset" && filter.days === p.id
-                    ? "bg-ink text-paper border-ink"
-                    : "border-ink hover:bg-ink hover:text-paper"
-                }`}
-              >
-                {p.label}
-              </button>
-            ))}
-            <button
-              onClick={() =>
-                setFilter({
-                  mode: "custom",
-                  from: filter.from || new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10),
-                  to: filter.to || new Date().toISOString().slice(0, 10),
-                })
-              }
-              className={`px-2.5 py-1 border-2 font-mono text-[10px] uppercase tracking-[0.2em] ${
-                filter.mode === "custom"
-                  ? "bg-ink text-paper border-ink"
-                  : "border-ink hover:bg-ink hover:text-paper"
-              }`}
-            >
-              Custom range
-            </button>
-          </div>
-          {filter.mode === "custom" && (
-            <div className="flex flex-wrap gap-2 items-end">
-              <div>
-                <div className="font-mono text-[9px] uppercase tracking-[0.25em] text-ink-muted mb-0.5">
-                  From
-                </div>
-                <input
-                  type="date"
-                  value={filter.from || ""}
-                  onChange={(e) => setFilter({ ...filter, from: e.target.value })}
-                  className="border-2 border-ink bg-paper px-2 py-1 font-body text-sm"
-                />
-              </div>
-              <div>
-                <div className="font-mono text-[9px] uppercase tracking-[0.25em] text-ink-muted mb-0.5">
-                  To
-                </div>
-                <input
-                  type="date"
-                  value={filter.to || ""}
-                  onChange={(e) => setFilter({ ...filter, to: e.target.value })}
-                  className="border-2 border-ink bg-paper px-2 py-1 font-body text-sm"
-                />
-              </div>
-            </div>
-          )}
-        </div>
+        <DateRangeFilter filter={filter} setFilter={setFilter} />
       </Card>
 
       {view === "training" && (
@@ -190,6 +95,16 @@ export function History() {
           filter={filter}
         />
       )}
+      {view === "sports" && (
+        <SportsHistory
+          sportsLog={sportsLog}
+          sportsList={sportsList}
+          onRemove={removeSportSession}
+          onClear={clearSportsLog}
+          filter={filter}
+        />
+      )}
+      {view === "steps" && <StepsHistory profile={profile} filter={filter} />}
       {view === "diet" && <MealHistory profile={profile} customFoods={customFoods} filter={filter} />}
       {view === "pantry" && (
         <PantryHistory
@@ -948,5 +863,199 @@ function PharmaHistory({ category, label, meds, filter }) {
         )}
       </Card>
     </>
+  );
+}
+
+// ============================================================================
+// SportsHistory — list of sports sessions (football, padel, etc.) within
+// the global filter window. Stats: total sessions, minutes, kcal.
+// ============================================================================
+
+function SportsHistory({ sportsLog, sportsList, onRemove, onClear, filter }) {
+  const range = filterRange(filter);
+  const filtered = (sportsLog || []).filter((s) => {
+    const t = new Date(s.date).getTime();
+    return t >= range.from && t <= range.to;
+  });
+
+  const totalSessions = filtered.length;
+  const totalMin = filtered.reduce((s, x) => s + (Number(x.durationMin) || 0), 0);
+  const totalKcal = filtered.reduce((s, x) => s + (Number(x.kcal) || 0), 0);
+
+  // Per-sport breakdown
+  const bySport = useMemo(() => {
+    const out = {};
+    for (const s of filtered) {
+      const k = s.sportId || s.sportName;
+      if (!out[k]) out[k] = { name: s.sportName, icon: s.sportIcon, count: 0, min: 0, kcal: 0 };
+      out[k].count++;
+      out[k].min += Number(s.durationMin) || 0;
+      out[k].kcal += Number(s.kcal) || 0;
+    }
+    return Object.values(out).sort((a, b) => b.count - a.count);
+  }, [filtered]);
+
+  return (
+    <Card>
+      <CardHeader
+        kicker="Sports Log"
+        title={totalSessions === 0 ? "No sports yet" : `${totalSessions} sessions`}
+        subtitle={totalSessions === 0 ? "Log a session on Activity → Sports." : "Tap × to remove."}
+        right={
+          (sportsLog || []).length > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                if (confirm("Clear all sports history? This cannot be undone.")) onClear();
+              }}
+            >
+              <Trash2 size={12} /> Clear
+            </Button>
+          )
+        }
+      />
+      {totalSessions > 0 && (
+        <>
+          <div className="grid grid-cols-3 gap-3 mb-4">
+            <Stat label="Sessions" value={totalSessions} />
+            <Stat label="Minutes" value={Math.round(totalMin)} suffix="min" accent="#3b6aa3" />
+            <Stat label="Kcal" value={Math.round(totalKcal).toLocaleString()} suffix="kcal" accent="#c44827" />
+          </div>
+          {bySport.length > 1 && (
+            <div className="border-2 border-ink p-3 mb-4">
+              <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted mb-2">
+                By sport
+              </div>
+              <ul className="space-y-1">
+                {bySport.map((b) => (
+                  <li key={b.name} className="flex items-center justify-between gap-2 font-body text-sm">
+                    <span>{b.icon} {b.name}</span>
+                    <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted">
+                      {b.count}× · {Math.round(b.min)}m · {Math.round(b.kcal).toLocaleString()} kcal
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </>
+      )}
+      <ul className="divide-y divide-ink/30 border-y border-ink/30">
+        {filtered.map((s) => (
+          <li key={s.id} className="py-2 flex items-center gap-3">
+            <span className="text-2xl shrink-0">{s.sportIcon || "🏃"}</span>
+            <div className="flex-1 min-w-0">
+              <div className="font-display text-base font-bold">
+                {s.sportName} <span className="font-mono text-xs text-ink-muted">· {s.intensity || "moderate"}</span>
+              </div>
+              <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted">
+                {new Date(s.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                {" · "}
+                {Math.round(s.durationMin)}m · {Math.round(s.kcal)} kcal
+                {s.notes && ` · ${s.notes}`}
+              </div>
+            </div>
+            <Button variant="ghost" size="sm" onClick={() => onRemove(s.id)}>
+              <Trash2 size={12} />
+            </Button>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
+
+// ============================================================================
+// StepsHistory — reads each day's steps:YYYY-MM-DD value within the filter
+// window, aggregates totals + averages + goal-hit count.
+// ============================================================================
+
+function StepsHistory({ profile, filter }) {
+  const range = filterRange(filter);
+  const baseline = profile?.stepAdjust?.baseline || 10000;
+  const weightKg = profile.stats?.weightKg || profile.weightKg || 70;
+
+  const entries = useMemo(() => {
+    const out = [];
+    const cursor = new Date();
+    cursor.setHours(0, 0, 0, 0);
+    // Walk backwards day by day until before range.from. Cap at 2 years to
+    // avoid unbounded loops if the user picks "all time" with sparse data.
+    const cap = 730;
+    for (let i = 0; i < cap; i++) {
+      const t = cursor.getTime();
+      if (t < range.from) break;
+      if (t > range.to) {
+        cursor.setDate(cursor.getDate() - 1);
+        continue;
+      }
+      const k = todayKey(cursor);
+      const v = Number(load(`steps:${k}`, 0)) || 0;
+      out.push({ date: new Date(cursor), key: k, steps: v });
+      cursor.setDate(cursor.getDate() - 1);
+    }
+    return out;
+  }, [range.from, range.to]);
+
+  const total = entries.reduce((s, e) => s + e.steps, 0);
+  const nonZero = entries.filter((e) => e.steps > 0).length;
+  const avg = nonZero > 0 ? Math.round(total / nonZero) : 0;
+  const max = entries.reduce((m, e) => (e.steps > m ? e.steps : m), 0);
+  const hit = entries.filter((e) => e.steps >= baseline).length;
+  const totalKcal = stepsToKcal(total, weightKg);
+
+  return (
+    <Card>
+      <CardHeader
+        kicker="Steps Log"
+        title={nonZero === 0 ? "No steps logged in range" : `${nonZero} day${nonZero === 1 ? "" : "s"} logged`}
+        subtitle={
+          nonZero === 0
+            ? "Track steps on Activity → Steps."
+            : `Avg ${avg.toLocaleString()} · best ${max.toLocaleString()} · goal ${baseline.toLocaleString()}`
+        }
+      />
+      {nonZero > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+          <Stat label="Total" value={total.toLocaleString()} suffix="steps" />
+          <Stat label="Avg/day" value={avg.toLocaleString()} suffix="steps" accent="#3b6aa3" />
+          <Stat
+            label={`Hit ${(baseline / 1000).toFixed(0)}k`}
+            value={`${hit}/${entries.length}`}
+            suffix="days"
+            accent="#4a6b3e"
+          />
+          <Stat label="Kcal" value={totalKcal.toLocaleString()} suffix="kcal" accent="#c44827" />
+        </div>
+      )}
+      <ul className="divide-y divide-ink/30 border-y border-ink/30 max-h-96 overflow-y-auto">
+        {entries.map((e) => {
+          const hitGoal = e.steps >= baseline && e.steps > 0;
+          const c = hitGoal ? "#4a6b3e" : e.steps > 0 ? "#6b5a3e" : "#aaa";
+          return (
+            <li key={e.key} className="py-2 flex items-center gap-3">
+              <Footprints size={14} className="text-ink-muted shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="font-body text-base">
+                  {e.date.toLocaleDateString("en-US", {
+                    weekday: "short",
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                  })}
+                </div>
+              </div>
+              <span className="font-display text-lg font-bold tabular-nums" style={{ color: c }}>
+                {e.steps.toLocaleString()}
+              </span>
+              <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-ink-muted w-16 text-right">
+                {e.steps === 0 ? "no log" : hitGoal ? "goal hit" : "below"}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </Card>
   );
 }

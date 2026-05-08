@@ -4,6 +4,7 @@ import { Card, CardHeader, Stat } from "../components/ui/Card.jsx";
 import { Button, IconButton } from "../components/ui/Button.jsx";
 import { Field, TextInput, Select, Chip } from "../components/ui/Field.jsx";
 import { Modal } from "../components/ui/Modal.jsx";
+import { DateRangeFilter, filterRange, filterLabel } from "../components/ui/DateRangeFilter.jsx";
 import { fileToResizedBase64 } from "../lib/aiVision.js";
 import { bmr, kcalToKg, estimateWorkoutKcal, dailyTarget } from "../lib/calories.js";
 import { calcMeal } from "../store/profiles.js";
@@ -40,13 +41,6 @@ const METRICS = [
 ];
 
 const COMMON_TAGS = ["morning", "post-workout", "vacation", "cut", "bulk", "before", "after"];
-const WINDOWS = [
-  { id: 7, label: "7d" },
-  { id: 30, label: "30d" },
-  { id: 90, label: "3mo" },
-  { id: 365, label: "1y" },
-  { id: 0, label: "All" },
-];
 
 export function Progress() {
   const {
@@ -60,7 +54,7 @@ export function Progress() {
     dayTypes,
   } = useApp();
 
-  const [windowDays, setWindowDays] = useState(30);
+  const [filter, setFilter] = useState({ mode: "preset", days: 30 });
   const [activeTag, setActiveTag] = useState(null);
   const [activeMetric, setActiveMetric] = useState("weightKg");
   const [view, setView] = useState("measurements"); // measurements | photos
@@ -80,17 +74,16 @@ export function Progress() {
     [weightLog],
   );
 
+  // Window resolution: convert the shared filter shape to a from/to ms pair.
+  const range = useMemo(() => filterRange(filter), [filter]);
+  const windowDays = filter.mode === "preset" ? Number(filter.days) || 0 : 0;
   const filtered = useMemo(() => {
-    let out = sorted;
-    if (windowDays) {
-      const cutoff = Date.now() - windowDays * 86400000;
-      out = out.filter((e) => e.date >= cutoff);
-    }
+    let out = sorted.filter((e) => e.date >= range.from && e.date <= range.to);
     if (activeTag) {
       out = out.filter((e) => (e.tags || []).includes(activeTag));
     }
     return out;
-  }, [sorted, windowDays, activeTag]);
+  }, [sorted, range.from, range.to, activeTag]);
 
   const latest = sorted[sorted.length - 1];
 
@@ -154,22 +147,9 @@ export function Progress() {
           </button>
         </div>
 
-        {/* Filters: window + tags */}
-        <div className="flex flex-wrap gap-2 mb-3">
-          <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted self-center mr-1 inline-flex items-center gap-1">
-            <Calendar size={12} /> Range
-          </span>
-          {WINDOWS.map((w) => (
-            <button
-              key={w.id}
-              onClick={() => setWindowDays(w.id)}
-              className={`px-2.5 py-1 border-2 font-mono text-[10px] uppercase tracking-[0.2em] ${
-                windowDays === w.id ? "bg-ink text-paper border-ink" : "border-ink hover:bg-ink hover:text-paper"
-              }`}
-            >
-              {w.label}
-            </button>
-          ))}
+        {/* Filters: window (with custom range) + tags */}
+        <div className="mb-3">
+          <DateRangeFilter filter={filter} setFilter={setFilter} compact />
         </div>
 
         {allTags.length > 0 && (

@@ -3,42 +3,39 @@ import { useApp } from "../store/AppContext.jsx";
 import { Card, CardHeader, Stat } from "../components/ui/Card.jsx";
 import { Button } from "../components/ui/Button.jsx";
 import { Chip } from "../components/ui/Field.jsx";
+import { DateRangeFilter, filterRange, filterLabel } from "../components/ui/DateRangeFilter.jsx";
 import { todayKey } from "../lib/time.js";
 import { stepsToKcal } from "../lib/calories.js";
 import { load } from "../store/storage.js";
 import { Footprints } from "lucide-react";
 
-const STEPS_WINDOWS = [
-  { id: 7, label: "7d" },
-  { id: 30, label: "30d" },
-  { id: 90, label: "90d" },
-  { id: 365, label: "1y" },
-  { id: 0, label: "All" },
-];
-
 export function Steps() {
   const { profile, steps, setSteps, stepAdjustKcal } = useApp();
-  const [windowDays, setWindowDays] = useState(30);
+  const [filter, setFilter] = useState({ mode: "preset", days: 30 });
   const userWeightKg = profile.stats?.weightKg || 70;
   const todaysKcal = stepsToKcal(steps, userWeightKg);
 
   const data = useMemo(() => {
+    const range = filterRange(filter);
     const out = [];
     const cursor = new Date();
     cursor.setHours(0, 0, 0, 0);
-    const days = windowDays || 365;
     let total = 0;
     let nonZero = 0;
-    for (let i = 0; i < days; i++) {
+    const cap = 730; // safety cap for "All time"
+    for (let i = 0; i < cap; i++) {
+      const t = cursor.getTime();
+      if (t < range.from) break;
+      if (t > range.to) {
+        cursor.setDate(cursor.getDate() - 1);
+        continue;
+      }
       const k = todayKey(cursor);
       const v = Number(load(`steps:${k}`, 0)) || 0;
       out.push({ date: new Date(cursor), key: k, steps: v });
       total += v;
       if (v > 0) nonZero++;
       cursor.setDate(cursor.getDate() - 1);
-      if (windowDays === 0 && i > 30 && v === 0 && out.slice(-7).every((d) => d.steps === 0)) {
-        break;
-      }
     }
     out.reverse();
     const avg = nonZero > 0 ? Math.round(total / nonZero) : 0;
@@ -46,7 +43,7 @@ export function Steps() {
     const baseline = profile?.stepAdjust?.baseline || 10000;
     const hitGoalDays = out.filter((d) => d.steps >= baseline).length;
     return { entries: out, total, avg, max, nonZero, baseline, hitGoalDays };
-  }, [windowDays, profile?.stepAdjust?.baseline]);
+  }, [filter, profile?.stepAdjust?.baseline]);
 
   return (
     <>
@@ -108,25 +105,13 @@ export function Steps() {
           title="Step History"
           subtitle={
             data.nonZero === 0
-              ? "Log steps to start tracking your trend."
-              : `${data.nonZero} day${data.nonZero === 1 ? "" : "s"} logged · avg ${data.avg.toLocaleString()} · best ${data.max.toLocaleString()}`
-          }
-          right={
-            <div className="flex flex-wrap gap-1">
-              {STEPS_WINDOWS.map((w) => (
-                <button
-                  key={w.id}
-                  onClick={() => setWindowDays(w.id)}
-                  className={`px-2.5 py-1 border-2 font-mono text-[10px] uppercase tracking-[0.2em] ${
-                    windowDays === w.id ? "bg-ink text-paper border-ink" : "border-ink hover:bg-ink hover:text-paper"
-                  }`}
-                >
-                  {w.label}
-                </button>
-              ))}
-            </div>
+              ? `Log steps to start tracking your trend · ${filterLabel(filter)}`
+              : `${data.nonZero} day${data.nonZero === 1 ? "" : "s"} logged · avg ${data.avg.toLocaleString()} · best ${data.max.toLocaleString()} · ${filterLabel(filter)}`
           }
         />
+        <div className="mb-3">
+          <DateRangeFilter filter={filter} setFilter={setFilter} compact />
+        </div>
 
         {data.nonZero > 0 && (
           <>

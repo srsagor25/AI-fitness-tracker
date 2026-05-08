@@ -4,6 +4,7 @@ import { Card, CardHeader, Stat } from "../components/ui/Card.jsx";
 import { Button, IconButton } from "../components/ui/Button.jsx";
 import { Field, TextInput, Select, Chip } from "../components/ui/Field.jsx";
 import { Modal } from "../components/ui/Modal.jsx";
+import { DateRangeFilter, filterRange, filterLabel } from "../components/ui/DateRangeFilter.jsx";
 import { INTENSITY, estimateSportKcal } from "../store/sports.js";
 import { todayKey } from "../lib/time.js";
 import { Plus, Trash2, Edit3, Flame, Clock, Activity } from "lucide-react";
@@ -11,13 +12,6 @@ import { Plus, Trash2, Edit3, Flame, Clock, Activity } from "lucide-react";
 function uid() {
   return "sp_" + Math.random().toString(36).slice(2, 9);
 }
-
-const WINDOWS = [
-  { id: 7, label: "7d" },
-  { id: 30, label: "30d" },
-  { id: 90, label: "90d" },
-  { id: 0, label: "All" },
-];
 
 export function Sports() {
   const {
@@ -33,7 +27,7 @@ export function Sports() {
 
   const [logging, setLogging] = useState(null); // sport id or null
   const [editingSport, setEditingSport] = useState(null);
-  const [windowDays, setWindowDays] = useState(30);
+  const [filter, setFilter] = useState({ mode: "preset", days: 30 });
 
   const today = todayKey();
   const todaysSessions = useMemo(
@@ -42,10 +36,12 @@ export function Sports() {
   );
 
   const inWindow = useMemo(() => {
-    if (!windowDays) return sportsLog;
-    const cutoff = Date.now() - windowDays * 86400000;
-    return sportsLog.filter((s) => s.date >= cutoff);
-  }, [sportsLog, windowDays]);
+    const range = filterRange(filter);
+    return sportsLog.filter((s) => {
+      const t = new Date(s.date).getTime();
+      return t >= range.from && t <= range.to;
+    });
+  }, [sportsLog, filter]);
 
   const totals = useMemo(() => {
     let totalMin = 0;
@@ -161,23 +157,11 @@ export function Sports() {
         <CardHeader
           kicker="History"
           title="All Sport Sessions"
-          subtitle={`${totals.count} sessions · ${totals.totalMin} min · ${Math.round(totals.totalKcal).toLocaleString()} kcal`}
-          right={
-            <div className="flex gap-1 flex-wrap">
-              {WINDOWS.map((w) => (
-                <button
-                  key={w.id}
-                  onClick={() => setWindowDays(w.id)}
-                  className={`px-2.5 py-1 border-2 font-mono text-[10px] uppercase tracking-[0.2em] ${
-                    windowDays === w.id ? "bg-ink text-paper border-ink" : "border-ink hover:bg-ink hover:text-paper"
-                  }`}
-                >
-                  {w.label}
-                </button>
-              ))}
-            </div>
-          }
+          subtitle={`${totals.count} sessions · ${totals.totalMin} min · ${Math.round(totals.totalKcal).toLocaleString()} kcal · ${filterLabel(filter)}`}
         />
+        <div className="mb-3">
+          <DateRangeFilter filter={filter} setFilter={setFilter} compact />
+        </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
           <Stat label="Sessions" value={totals.count} />
