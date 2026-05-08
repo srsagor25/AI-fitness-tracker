@@ -121,28 +121,51 @@ export function AppProvider({ children }) {
 
   // One-time migration: older saved profiles stored a flat `dayTypes` array
   // and no `restDayType`/`extraDayTypes`. Convert here so the composed
-  // day-type list matches the new program-driven scheme.
+  // day-type list matches the new program-driven scheme. Also rewrites the
+  // legacy "PPL + football" public label since football is now logged via
+  // Activity → Sports rather than as a day type.
   useEffect(() => {
     setProfile((p) => {
-      if (p.restDayType && Array.isArray(p.extraDayTypes)) return p;
-      const legacy = Array.isArray(p.dayTypes) ? p.dayTypes : [];
-      const programDayIds = new Set();
-      for (const prog of Object.values(BUILTIN_PROGRAMS)) {
-        for (const d of prog.days || []) programDayIds.add(d.id);
+      const needsDayTypeMigration = !(p.restDayType && Array.isArray(p.extraDayTypes));
+      const needsLabelMigration =
+        typeof p.publicLabel === "string" && /\+\s*football\b/i.test(p.publicLabel);
+      if (!needsDayTypeMigration && !needsLabelMigration) return p;
+
+      let next = { ...p };
+
+      if (needsDayTypeMigration) {
+        const legacy = Array.isArray(p.dayTypes) ? p.dayTypes : [];
+        const programDayIds = new Set();
+        for (const prog of Object.values(BUILTIN_PROGRAMS)) {
+          for (const d of prog.days || []) programDayIds.add(d.id);
+        }
+        const restFromLegacy = legacy.find((d) => d.id === "rest");
+        const restDayType =
+          p.restDayType ||
+          restFromLegacy ||
+          { id: "rest", label: "Rest Day", icon: "🛏️", color: "#6b5a3e", target: 2200, suggestShake: null };
+        // Anything in the legacy list that isn't "rest", isn't a program day,
+        // and isn't a sport id (football, cricket, padel, …) becomes an extra
+        // day type. Sports already feed kcal via the Sports tab, so we skip
+        // them to avoid double-counting.
+        const sportIds = new Set(["football", "cricket", "padel", "tennis", "basketball", "volleyball", "swimming", "running", "cycling"]);
+        const extras =
+          Array.isArray(p.extraDayTypes) && p.extraDayTypes.length > 0
+            ? p.extraDayTypes
+            : legacy.filter(
+                (d) => d.id !== "rest" && !programDayIds.has(d.id) && !sportIds.has(d.id),
+              );
+        next = { ...next, restDayType, extraDayTypes: extras };
+        delete next.dayTypes;
       }
-      const restFromLegacy = legacy.find((d) => d.id === "rest");
-      const restDayType =
-        p.restDayType ||
-        restFromLegacy ||
-        { id: "rest", label: "Rest Day", icon: "🛏️", color: "#6b5a3e", target: 2200, suggestShake: null };
-      // Anything in the legacy list that isn't "rest" and isn't already a
-      // program day id becomes an extra day type (e.g. football).
-      const extras =
-        Array.isArray(p.extraDayTypes) && p.extraDayTypes.length > 0
-          ? p.extraDayTypes
-          : legacy.filter((d) => d.id !== "rest" && !programDayIds.has(d.id));
-      const next = { ...p, restDayType, extraDayTypes: extras };
-      delete next.dayTypes;
+
+      if (needsLabelMigration) {
+        next.publicLabel = next.publicLabel
+          .replace(/\s*[+&/]\s*football\b/i, "")
+          .replace(/\s+football\b/i, "")
+          .trim();
+      }
+
       return next;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
