@@ -88,14 +88,15 @@ export function Dashboard({ setTab }) {
     }
 
     function fmtCountdown(ms) {
-      if (ms == null) return "—";
+      if (ms == null) return { num: "—", suffix: "", late: false };
       const abs = Math.abs(ms);
       const totalMin = Math.floor(abs / 60000);
       const h = Math.floor(totalMin / 60);
       const m = totalMin % 60;
-      const text = h > 0 ? `${h}h ${String(m).padStart(2, "0")}m` : `${m}m`;
-      if (ms < 0) return `${text} late`;
-      return `in ${text}`;
+      const num = h > 0 ? `${h}h ${String(m).padStart(2, "0")}m` : `${m}m`;
+      return ms < 0
+        ? { num, suffix: "late", late: true }
+        : { num, suffix: "to go", late: false };
     }
 
     // Workout
@@ -397,15 +398,17 @@ export function Dashboard({ setTab }) {
           <ul className="grid grid-cols-1 md:grid-cols-2 gap-2">
             {reminders.list.map((r) => {
               const Icon = r.icon;
+              // Per-urgency palette: numbers pop in saturated colors against
+              // the paper background; the left border + icon match.
               const colors = {
-                now: "#c44827",
-                late: "#c44827",
-                soon: "#c44827",
-                scheduled: "#3b6aa3",
-                done: "#4a6b3e",
-                info: "#6b5a3e",
+                now:       { border: "#c44827", num: "#c44827", bg: "#fde6df" },
+                late:      { border: "#c44827", num: "#c44827", bg: "#fde6df" },
+                soon:      { border: "#d97a2c", num: "#d97a2c", bg: "#fdeed8" },
+                scheduled: { border: "#3b6aa3", num: "#3b6aa3", bg: "#dde8f4" },
+                done:      { border: "#4a6b3e", num: "#4a6b3e", bg: "#dde8d6" },
+                info:      { border: "#6b5a3e", num: "#6b5a3e", bg: "#ece4d4" },
               };
-              const c = colors[r.urgency] || "#2a2419";
+              const c = colors[r.urgency] || colors.info;
               const onClick = () => {
                 if (r.targetTab) return setTab(r.targetTab);
                 setTab(
@@ -422,21 +425,22 @@ export function Dashboard({ setTab }) {
                             : "dashboard",
                 );
               };
+              const cd = r.countdown != null ? reminders.fmtCountdown(r.countdown) : null;
               return (
                 <li key={r.id}>
                   <button
                     onClick={onClick}
                     className="w-full text-left border-2 border-ink p-3 hover:bg-ink/5 transition-colors flex items-start gap-3"
-                    style={{ borderLeftColor: c, borderLeftWidth: 6 }}
+                    style={{ borderLeftColor: c.border, borderLeftWidth: 6 }}
                   >
-                    <span className="shrink-0 mt-0.5 text-xl" style={{ color: c }}>
+                    <span className="shrink-0 mt-0.5 text-xl" style={{ color: c.border }}>
                       {r.emoji || <Icon size={20} />}
                     </span>
                     <div className="flex-1 min-w-0">
                       <div className="font-display text-base font-bold flex items-center gap-2 flex-wrap">
                         {r.label}
                         {r.urgency === "late" && <Chip color="#c44827">Late</Chip>}
-                        {r.urgency === "soon" && <Chip color="#c44827">Soon</Chip>}
+                        {r.urgency === "soon" && <Chip color="#d97a2c">Soon</Chip>}
                         {r.urgency === "now" && <Chip color="#c44827">Now</Chip>}
                         {r.urgency === "done" && <Chip color="#4a6b3e">Done</Chip>}
                       </div>
@@ -444,13 +448,23 @@ export function Dashboard({ setTab }) {
                         {r.detail}
                       </div>
                     </div>
-                    {r.countdown != null && (
-                      <span
-                        className="font-mono text-[10px] uppercase tracking-[0.25em] shrink-0 self-center"
-                        style={{ color: c }}
+                    {cd && (
+                      <div
+                        className="shrink-0 self-stretch flex flex-col items-end justify-center px-2 border-l-2 border-ink/20"
                       >
-                        {reminders.fmtCountdown(r.countdown)}
-                      </span>
+                        <span
+                          className="font-display font-black tabular-nums leading-none text-lg md:text-xl"
+                          style={{ color: c.num }}
+                        >
+                          {cd.num}
+                        </span>
+                        <span
+                          className="font-mono text-[9px] uppercase tracking-[0.25em] mt-0.5"
+                          style={{ color: c.num, opacity: 0.7 }}
+                        >
+                          {cd.suffix}
+                        </span>
+                      </div>
                     )}
                   </button>
                 </li>

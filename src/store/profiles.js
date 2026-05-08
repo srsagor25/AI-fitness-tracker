@@ -36,12 +36,12 @@ const SAIDUR_REST_DAY = {
   id: "rest", label: "Rest Day", icon: "🛏️", color: "#6b5a3e", target: 2400, suggestShake: "shake_standard",
 };
 
-// Extras layer on top of whatever the active program supplies. Useful for
-// recurring activities that aren't part of a workout program (e.g. football
-// nights). The user can edit/add/remove these in Profile.
-const SAIDUR_EXTRA_DAY_TYPES = [
-  { id: "football", label: "Football Day", icon: "⚽", color: "#4a6b3e", target: 2750, suggestShake: "shake_power" },
-];
+// Extras layer on top of whatever the active program supplies. Sports
+// (football, cricket, padel, …) are logged on the Activity → Sports tab,
+// where their MET-based kcal already lifts the daily eating target — so
+// they don't need a separate day type here. Add extras only for recurring
+// activities that aren't covered by a sport entry.
+const SAIDUR_EXTRA_DAY_TYPES = [];
 
 const SAIDUR_LUNCH_PRESETS = {
   lunch_chicken_thigh: { key: "lunch_chicken_thigh", name: "Chicken Thigh Bhuna + Rice", icon: "🍗",
@@ -84,7 +84,7 @@ const SAIDUR_CHEAT_PRESETS = {
 const SAIDUR_SHAKE_PRESETS = {
   shake_standard: { key: "shake_standard", name: "Standard Shake", icon: "🥤",
     items: [{ food: "milk", amount: 250 }, { food: "cashew", amount: 15 }, { food: "dates", amount: 30 }] },
-  shake_power: { key: "shake_power", name: "Power Shake", icon: "💪", note: "Auto-suggested on training/football days",
+  shake_power: { key: "shake_power", name: "Power Shake", icon: "💪", note: "Auto-suggested on training days",
     items: [{ food: "milk", amount: 250 }, { food: "cashew", amount: 30 }, { food: "dates", amount: 30 }, { food: "peanut", amount: 30 }] },
 };
 
@@ -146,7 +146,7 @@ const SAIDUR_FAST_FOOD_TIPS = [
 export const SAIDUR_PROFILE = {
   id: "saidur",
   name: "Saidur",
-  publicLabel: "Saidur — recomp / IF / PPL + football",
+  publicLabel: "Saidur — recomp / IF / PPL",
   stats: { heightDisplay: "5'11\"", heightCm: 180, weightKg: 86, sex: "male", age: 28 },
   goal: "Body recomposition (muscle gain + fat loss)",
   goalKey: "maintain",
