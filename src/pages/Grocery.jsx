@@ -5,6 +5,7 @@ import { Button, IconButton } from "../components/ui/Button.jsx";
 import { Field, TextInput, Select, Chip } from "../components/ui/Field.jsx";
 import { Modal } from "../components/ui/Modal.jsx";
 import { GROCERY_CATEGORIES } from "../store/profiles.js";
+import { getAllUnits, isContinuousUnit, defaultStep } from "../lib/units.js";
 import {
   Plus,
   Trash2,
@@ -14,6 +15,7 @@ import {
   PackagePlus,
   Settings,
   TrendingDown,
+  Package,
 } from "lucide-react";
 
 function uid() {
@@ -131,6 +133,7 @@ export function Grocery() {
                     packetSize: 100,
                     lowThreshold: 50,
                     icon: "🛒",
+                    trackByPackets: false,
                   })
                 }
               >
@@ -193,7 +196,9 @@ export function Grocery() {
                 <ul className="divide-y divide-ink/30 border-y border-ink/30">
                   {grouped[cat].map((it) => {
                     const isLow = it.qty <= it.lowThreshold;
-                    const pctOfPacket = (it.qty / Math.max(1, it.initialQty)) * 100;
+                    const ps = Math.max(1, Number(it.packetSize) || 1);
+                    const packetCount = it.trackByPackets ? it.qty / ps : null;
+                    const step = it.trackByPackets ? ps : defaultStep(it.unit);
                     return (
                       <li
                         key={it.key}
@@ -204,6 +209,12 @@ export function Grocery() {
                           <div className="flex-1 min-w-0">
                             <div className="font-body text-base flex items-center gap-2 flex-wrap">
                               <span className="break-words">{it.name}</span>
+                              {it.trackByPackets && (
+                                <Chip color="#3b6aa3">
+                                  <Package size={10} className="inline mr-1" />
+                                  {ps}{it.unit}/pack
+                                </Chip>
+                              )}
                               {isLow && <Chip color="#c44827">Low</Chip>}
                               {it.perishable && (
                                 <Chip color="#c44827">Perishable · {it.maxDays || 7}d</Chip>
@@ -211,38 +222,72 @@ export function Grocery() {
                               {it.optional && <Chip color="#6b5a3e">Optional</Chip>}
                             </div>
                             <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted">
-                              Threshold {it.lowThreshold}{it.unit} · Packet {it.packetSize}{it.unit}
+                              {it.trackByPackets ? (
+                                <>
+                                  {(packetCount ?? 0).toFixed(packetCount % 1 === 0 ? 0 : 1)} pack
+                                  {(packetCount ?? 0) === 1 ? "" : "s"} · {Math.round(it.qty)}{it.unit} total
+                                  {" · "}low at {it.lowThreshold}{it.unit}
+                                </>
+                              ) : (
+                                <>Threshold {it.lowThreshold}{it.unit}{ps > 1 ? ` · Packet ${ps}${it.unit}` : ""}</>
+                              )}
                               {it.perishable && ` · keep ≤ ${it.maxDays || 7} days`}
                             </div>
                           </div>
                         </div>
                         <div className="flex items-center gap-1 flex-wrap md:flex-nowrap shrink-0 self-end md:self-center">
                           <IconButton
-                            onClick={() => adjustGrocery(it.key, -1 * (it.unit === "pc" ? 1 : 50))}
+                            onClick={() => adjustGrocery(it.key, -step)}
                             aria-label="Decrease"
+                            title={it.trackByPackets ? `−1 pack (${ps}${it.unit})` : `−${step}${it.unit}`}
                           >
                             −
                           </IconButton>
-                          <input
-                            type="number"
-                            value={it.qty}
-                            onChange={(e) =>
-                              setGroceryQty(it.key, Number(e.target.value) || 0)
-                            }
-                            className="w-20 border-2 border-ink bg-paper px-2 py-1 font-display text-base text-center"
-                          />
-                          <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-ink-muted">
-                            {it.unit}
-                          </span>
+                          {it.trackByPackets ? (
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="number"
+                                step="0.5"
+                                value={Number((it.qty / ps).toFixed(2))}
+                                onChange={(e) =>
+                                  setGroceryQty(
+                                    it.key,
+                                    Math.max(0, Number(e.target.value) || 0) * ps,
+                                  )
+                                }
+                                className="w-16 border-2 border-ink bg-paper px-2 py-1 font-display text-base text-center"
+                                title="Packet count"
+                              />
+                              <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-ink-muted">
+                                packs
+                              </span>
+                            </div>
+                          ) : (
+                            <>
+                              <input
+                                type="number"
+                                value={it.qty}
+                                onChange={(e) =>
+                                  setGroceryQty(it.key, Number(e.target.value) || 0)
+                                }
+                                className="w-20 border-2 border-ink bg-paper px-2 py-1 font-display text-base text-center"
+                              />
+                              <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-ink-muted">
+                                {it.unit}
+                              </span>
+                            </>
+                          )}
                           <IconButton
-                            onClick={() => adjustGrocery(it.key, it.unit === "pc" ? 1 : 50)}
+                            onClick={() => adjustGrocery(it.key, step)}
                             aria-label="Increase"
+                            title={it.trackByPackets ? `+1 pack (${ps}${it.unit})` : `+${step}${it.unit}`}
                           >
                             +
                           </IconButton>
                           <IconButton
                             onClick={() => restockGrocery(it.key)}
-                            aria-label="Restock packet"
+                            aria-label="Restock one packet"
+                            title="Add one packet"
                           >
                             <PackagePlus size={14} />
                           </IconButton>
@@ -349,7 +394,11 @@ export function Grocery() {
                               )}
                             </div>
                             <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted">
-                              Have {Math.round(it.qty)}{it.unit}
+                              {it.trackByPackets
+                                ? `Have ${(it.qty / Math.max(1, it.packetSize)).toFixed(
+                                    (it.qty / Math.max(1, it.packetSize)) % 1 === 0 ? 0 : 1,
+                                  )} pack${(it.qty / Math.max(1, it.packetSize)) === 1 ? "" : "s"} (${Math.round(it.qty)}${it.unit})`
+                                : `Have ${Math.round(it.qty)}${it.unit}`}
                               {f.avgDaily > 0 && (
                                 <>
                                   {" "}
@@ -357,7 +406,7 @@ export function Grocery() {
                                   {daysLeftDisplay}
                                 </>
                               )}
-                              {" · "}Buy {packets} packet{packets === 1 ? "" : "s"} ({it.packetSize}
+                              {" · "}Buy {packets} pack{packets === 1 ? "" : "s"} ({it.packetSize}
                               {it.unit} each)
                               {it.perishable && " · top up only"}
                             </div>
@@ -429,17 +478,44 @@ export function Grocery() {
       </Card>
 
       {editing && (
-        <ItemModal item={editing} onClose={() => setEditing(null)} onSave={(it) => {
-          saveGroceryItem(it);
-          setEditing(null);
-        }} />
+        <ItemModal
+          item={editing}
+          profile={profile}
+          updateProfile={updateProfile}
+          onClose={() => setEditing(null)}
+          onSave={(it) => {
+            saveGroceryItem(it);
+            setEditing(null);
+          }}
+        />
       )}
     </>
   );
 }
 
-function ItemModal({ item, onClose, onSave }) {
-  const [draft, setDraft] = useState(item);
+function ItemModal({ item, onClose, onSave, profile, updateProfile }) {
+  const [draft, setDraft] = useState({ ...item, trackByPackets: !!item.trackByPackets });
+  const customUnits = Array.isArray(profile?.customUnits) ? profile.customUnits : [];
+  const allUnits = getAllUnits(customUnits);
+  const [showAddUnit, setShowAddUnit] = useState(false);
+  const [newUnitId, setNewUnitId] = useState("");
+  const [newUnitLabel, setNewUnitLabel] = useState("");
+
+  const ps = Math.max(1, Number(draft.packetSize) || 1);
+  const packetCount = draft.trackByPackets ? draft.qty / ps : null;
+
+  function addCustomUnit() {
+    const id = newUnitId.trim();
+    if (!id) return;
+    const label = newUnitLabel.trim() || id;
+    const next = [...customUnits.filter((u) => u.id !== id), { id, label }];
+    updateProfile({ customUnits: next });
+    setDraft({ ...draft, unit: id });
+    setNewUnitId("");
+    setNewUnitLabel("");
+    setShowAddUnit(false);
+  }
+
   return (
     <Modal
       open
@@ -468,19 +544,173 @@ function ItemModal({ item, onClose, onSave }) {
             {GROCERY_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
           </Select>
         </Field>
-        <div className="grid grid-cols-4 gap-3">
-          <Field label="Unit">
-            <TextInput value={draft.unit} onChange={(e) => setDraft({ ...draft, unit: e.target.value })} />
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <Field
+            label="Unit"
+            hint="Pick how this item is measured. Add your own (e.g. tray, scoop) if needed."
+          >
+            <div className="flex gap-2">
+              <Select
+                value={draft.unit}
+                onChange={(e) => setDraft({ ...draft, unit: e.target.value })}
+              >
+                {allUnits.map((u) => (
+                  <option key={u.id} value={u.id}>{u.label}</option>
+                ))}
+              </Select>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setShowAddUnit((s) => !s)}
+                title="Add a custom unit"
+              >
+                {showAddUnit ? "Cancel" : "+ Custom"}
+              </Button>
+            </div>
+            {showAddUnit && (
+              <div className="border-2 border-ink p-2 mt-2 grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-2 items-end">
+                <div>
+                  <div className="font-mono text-[9px] uppercase tracking-[0.2em] text-ink-muted mb-0.5">
+                    Short id
+                  </div>
+                  <TextInput
+                    value={newUnitId}
+                    onChange={(e) => setNewUnitId(e.target.value)}
+                    placeholder="tray"
+                  />
+                </div>
+                <div>
+                  <div className="font-mono text-[9px] uppercase tracking-[0.2em] text-ink-muted mb-0.5">
+                    Label (optional)
+                  </div>
+                  <TextInput
+                    value={newUnitLabel}
+                    onChange={(e) => setNewUnitLabel(e.target.value)}
+                    placeholder="tray (12 eggs)"
+                  />
+                </div>
+                <Button variant="primary" size="sm" onClick={addCustomUnit}>
+                  Save unit
+                </Button>
+              </div>
+            )}
           </Field>
-          <Field label="Quantity">
-            <TextInput type="number" value={draft.qty} onChange={(e) => setDraft({ ...draft, qty: Number(e.target.value) || 0 })} />
+          <Field label="Low at" hint={`Auto-shopping triggers when stock drops to this many ${draft.unit}.`}>
+            <TextInput
+              type="number"
+              value={draft.lowThreshold}
+              onChange={(e) =>
+                setDraft({ ...draft, lowThreshold: Number(e.target.value) || 0 })
+              }
+            />
           </Field>
-          <Field label="Packet size">
-            <TextInput type="number" value={draft.packetSize} onChange={(e) => setDraft({ ...draft, packetSize: Number(e.target.value) || 0 })} />
-          </Field>
-          <Field label="Low at">
-            <TextInput type="number" value={draft.lowThreshold} onChange={(e) => setDraft({ ...draft, lowThreshold: Number(e.target.value) || 0 })} />
-          </Field>
+        </div>
+
+        {/* Packet-tracking toggle */}
+        <div className="border-2 border-ink p-3 bg-ink/5">
+          <label className="flex items-start gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={!!draft.trackByPackets}
+              onChange={(e) => setDraft({ ...draft, trackByPackets: e.target.checked })}
+              className="mt-1"
+            />
+            <div className="flex-1 min-w-0">
+              <div className="font-display text-base font-bold">Track by packets</div>
+              <div className="font-body text-sm italic text-ink-muted">
+                Use this for items you store in fixed-size packs (chicken 500g packs, eggs 12-trays, etc.).
+                Leave off if you just count the quantity.
+              </div>
+            </div>
+          </label>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {draft.trackByPackets ? (
+            <>
+              <Field label="Packet size" hint={`One packet = N ${draft.unit}.`}>
+                <TextInput
+                  type="number"
+                  value={draft.packetSize}
+                  onChange={(e) =>
+                    setDraft({ ...draft, packetSize: Math.max(1, Number(e.target.value) || 1) })
+                  }
+                />
+              </Field>
+              <Field label="Packets on hand">
+                <TextInput
+                  type="number"
+                  step="0.5"
+                  value={Number(((draft.qty || 0) / ps).toFixed(2))}
+                  onChange={(e) =>
+                    setDraft({
+                      ...draft,
+                      qty: Math.max(0, Number(e.target.value) || 0) * ps,
+                    })
+                  }
+                />
+              </Field>
+              <Field label={`Total in ${draft.unit}`} hint="Auto-syncs with packets × size.">
+                <TextInput
+                  type="number"
+                  value={draft.qty}
+                  onChange={(e) => setDraft({ ...draft, qty: Math.max(0, Number(e.target.value) || 0) })}
+                />
+              </Field>
+            </>
+          ) : (
+            <>
+              <Field label="Quantity">
+                <TextInput
+                  type="number"
+                  value={draft.qty}
+                  onChange={(e) => setDraft({ ...draft, qty: Math.max(0, Number(e.target.value) || 0) })}
+                />
+              </Field>
+              <Field label="Packet size (optional)" hint="Used by 'Restock' to add one pack at a time.">
+                <TextInput
+                  type="number"
+                  value={draft.packetSize}
+                  onChange={(e) =>
+                    setDraft({ ...draft, packetSize: Math.max(0, Number(e.target.value) || 0) })
+                  }
+                />
+              </Field>
+            </>
+          )}
+        </div>
+
+        {/* Perishable toggle (was hidden before but useful here too) */}
+        <div className="border-2 border-ink p-3">
+          <label className="flex items-start gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={!!draft.perishable}
+              onChange={(e) => setDraft({ ...draft, perishable: e.target.checked })}
+              className="mt-1"
+            />
+            <div className="flex-1 min-w-0">
+              <div className="font-display text-base font-bold">Perishable</div>
+              <div className="font-body text-sm italic text-ink-muted">
+                Limits how much auto-shopping suggests buying — only tops up to one packet's worth.
+              </div>
+            </div>
+          </label>
+          {draft.perishable && (
+            <div className="mt-2 max-w-xs">
+              <Field label="Max days fresh">
+                <TextInput
+                  type="number"
+                  value={draft.maxDays || 7}
+                  onChange={(e) =>
+                    setDraft({ ...draft, maxDays: Math.max(1, Number(e.target.value) || 7) })
+                  }
+                />
+              </Field>
+            </div>
+          )}
         </div>
       </div>
     </Modal>

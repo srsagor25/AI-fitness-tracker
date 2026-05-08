@@ -206,12 +206,26 @@ export function AppProvider({ children }) {
     setGrocery((prev) => {
       let changed = false;
       const next = prev.map((it) => {
+        let merged = it;
         const p = perishableByKey[it.key];
         if (p && !it.perishable) {
+          merged = { ...merged, ...p };
           changed = true;
-          return { ...it, ...p };
         }
-        return it;
+        // Default trackByPackets to true for items that already have a
+        // meaningful packetSize relative to the qty (i.e. clearly bought
+        // in packets, e.g. chicken 1000g with packetSize 333g). User can
+        // toggle off in the item modal at any time.
+        if (it.trackByPackets == null) {
+          const ps = Number(it.packetSize) || 0;
+          const auto =
+            ps > 1 &&
+            (it.unit === "g" || it.unit === "ml" || it.unit === "kg" || it.unit === "L") &&
+            (Number(it.initialQty) || 0) >= ps;
+          merged = { ...merged, trackByPackets: auto };
+          changed = true;
+        }
+        return merged;
       });
       return changed ? next : prev;
     });
