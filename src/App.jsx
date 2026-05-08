@@ -8,6 +8,8 @@ import { Plan } from "./pages/Plan.jsx";
 import { Week } from "./pages/Week.jsx";
 import { Foods } from "./pages/Foods.jsx";
 import { Workout } from "./pages/Workout.jsx";
+import { Sports } from "./pages/Sports.jsx";
+import { Steps } from "./pages/Steps.jsx";
 import { Programs } from "./pages/Programs.jsx";
 import { History } from "./pages/History.jsx";
 import { Grocery } from "./pages/Grocery.jsx";
@@ -38,6 +40,8 @@ export const TAB_DEF = {
     default: "workout",
     subTabs: [
       { id: "workout", label: "Workout" },
+      { id: "sports", label: "Sports" },
+      { id: "steps", label: "Steps" },
       { id: "programs", label: "Programs" },
     ],
   },
@@ -77,6 +81,8 @@ const LEGACY_MAP = {
   foods: { tab: "diet", subTab: "foods" },
 
   workout: { tab: "activity", subTab: "workout" },
+  sports: { tab: "activity", subTab: "sports" },
+  steps: { tab: "activity", subTab: "steps" },
   programs: { tab: "activity", subTab: "programs" },
   activity: { tab: "activity", subTab: "workout" },
 
@@ -185,6 +191,8 @@ export default function App() {
       {tab === "diet" && subTab === "foods" && <Foods />}
 
       {tab === "activity" && subTab === "workout" && <Workout />}
+      {tab === "activity" && subTab === "sports" && <Sports />}
+      {tab === "activity" && subTab === "steps" && <Steps />}
       {tab === "activity" && subTab === "programs" && <Programs />}
 
       {tab === "body" && subTab === "physique" && <Physique setTab={setTab} />}

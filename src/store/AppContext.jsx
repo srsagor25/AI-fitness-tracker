@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { load, save, listKeys, remove } from "./storage.js";
 import { BUILTIN_PROGRAMS } from "./defaults.js";
 import { TEMPLATES, cloneTemplate, calcMeal, ingredientDeltas, FOODS } from "./profiles.js";
+import { DEFAULT_SPORTS, estimateSportKcal } from "./sports.js";
 import { todayKey, dayOfWeek } from "../lib/time.js";
 import { estimateWorkoutKcal } from "../lib/calories.js";
 
@@ -89,6 +90,13 @@ export function AppProvider({ children }) {
   const [history, setHistory] = useState(() => load("workout:history", []));
   const [currentSession, setCurrentSession] = useState(() => load("workout:current", null));
 
+  // ----- Sports -----
+  // Library of sports the user can log (defaults seeded; user can add more).
+  // Each session is logged with sportId, durationMin, kcal (auto from MET ×
+  // weight × hours, or manual override), intensity, notes, date.
+  const [sportsList, setSportsList] = useState(() => load("sports:list", DEFAULT_SPORTS));
+  const [sportsLog, setSportsLog] = useState(() => load("sports:log", []));
+
   // ----- Grocery -----
   const [grocery, setGrocery] = useState(() => {
     const stored = load("grocery:items", null);
@@ -159,6 +167,8 @@ export function AppProvider({ children }) {
   useEffect(() => save("workout:weeks", weeks), [weeks]);
   useEffect(() => save("workout:history", history), [history]);
   useEffect(() => save("workout:current", currentSession), [currentSession]);
+  useEffect(() => save("sports:list", sportsList), [sportsList]);
+  useEffect(() => save("sports:log", sportsLog), [sportsLog]);
   useEffect(() => save("grocery:items", grocery), [grocery]);
   useEffect(() => save("shopping:manual", manualShopping), [manualShopping]);
   useEffect(() => save("grocery:activity", groceryActivity), [groceryActivity]);
@@ -231,6 +241,17 @@ export function AppProvider({ children }) {
       0,
     );
   }, [history, profile.stats?.weightKg, dateKey]);
+
+  const todaysSportsKcal = useMemo(() => {
+    return sportsLog
+      .filter((s) => todayKey(new Date(s.date)) === dateKey)
+      .reduce((sum, s) => sum + (Number(s.kcal) || 0), 0);
+  }, [sportsLog, dateKey]);
+
+  // Combined activity kcal — used by Today's Burning panel and the daily
+  // eating target adjustment so that an evening football game lifts your
+  // calorie budget the same way a workout would.
+  const todaysActivityKcal = todaysWorkoutKcal + todaysSportsKcal;
 
   // ----- Diet totals (using customFoods overrides) -----
   const calc = useCallback((items) => calcMeal(items, customFoods), [customFoods]);
@@ -331,8 +352,9 @@ export function AppProvider({ children }) {
 
   // ----- Diet target = day-type target + step adjustment + workout kcal bonus -----
   const dailyTargetKcal = useMemo(
-    () => Math.max(1200, (dayType?.target || 2000) + stepAdjustKcal + todaysWorkoutKcal),
-    [dayType, stepAdjustKcal, todaysWorkoutKcal],
+    () =>
+      Math.max(1200, (dayType?.target || 2000) + stepAdjustKcal + todaysActivityKcal),
+    [dayType, stepAdjustKcal, todaysActivityKcal],
   );
 
   // ----- Diet mutators -----
@@ -711,6 +733,58 @@ export function AppProvider({ children }) {
     setHistory([]);
   }
 
+  // ----- Sports mutators -----
+  function addSportSession(payload) {
+    const sport = sportsList.find((s) => s.id === payload.sportId);
+    if (!sport) return;
+    const durationMin = Number(payload.durationMin) || 0;
+    if (durationMin <= 0) return;
+    const intensity = payload.intensity || "moderate";
+    const autoKcal = estimateSportKcal({
+      met: sport.met,
+      weightKg: profile.stats?.weightKg || 70,
+      durationMin,
+      intensity,
+    });
+    const kcal =
+      payload.kcal != null && payload.kcal !== "" ? Math.max(0, Number(payload.kcal)) : autoKcal;
+    const entry = {
+      id: uid("sp"),
+      date: payload.date || Date.now(),
+      sportId: sport.id,
+      sportName: sport.name,
+      sportIcon: sport.icon,
+      durationMin,
+      kcal,
+      autoKcal,
+      intensity,
+      notes: (payload.notes || "").trim(),
+    };
+    setSportsLog((prev) => [entry, ...prev]);
+    showSnack(`Logged ${durationMin}m ${sport.name} · ${kcal} kcal`);
+  }
+  function removeSportSession(id) {
+    setSportsLog((prev) => prev.filter((s) => s.id !== id));
+  }
+  function clearSportsLog() {
+    setSportsLog([]);
+  }
+  function saveSport(sport) {
+    setSportsList((prev) => {
+      const idx = prev.findIndex((s) => s.id === sport.id);
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = sport;
+        return next;
+      }
+      return [...prev, sport];
+    });
+    showSnack(`Saved sport "${sport.name}"`);
+  }
+  function deleteSport(id) {
+    setSportsList((prev) => prev.filter((s) => s.id !== id));
+  }
+
   // ----- Grocery mutators -----
   function adjustGrocery(key, delta) {
     setGrocery((prev) => {
@@ -837,6 +911,9 @@ export function AppProvider({ children }) {
     currentSession, startSession, pauseSession, resumeSession, logSet, unlogSet,
     finishSession, cancelSession,
     todaysDay, todaysDayId, todaysWorkoutKcal,
+    // sports
+    sportsList, sportsLog, addSportSession, removeSportSession, clearSportsLog,
+    saveSport, deleteSport, todaysSportsKcal, todaysActivityKcal,
     // grocery
     grocery, adjustGrocery, restockGrocery, setGroceryQty,
     saveGroceryItem, removeGroceryItem, resetGroceryToTemplate,

@@ -45,6 +45,7 @@ export function Dashboard({ setTab }) {
     dayTotals,
     dailyTargetKcal,
     todaysWorkoutKcal,
+    todaysSportsKcal,
     todaysDay,
     todaysDayId,
     activeProgram,
@@ -364,7 +365,9 @@ export function Dashboard({ setTab }) {
   const burnTarget = Math.max(0, Math.round(expectedTraining + expectedSteps));
 
   const actualSteps = stepsToKcal(steps, userWeightKg);
-  const burned = Math.round(todaysWorkoutKcal + actualSteps);
+  // burned = workouts + sports + steps. All three feed into the eating
+  // target (via dailyTargetKcal in AppContext) and the Today burn panel.
+  const burned = Math.round(todaysWorkoutKcal + todaysSportsKcal + actualSteps);
 
   const eaten = Math.round(dayTotals.kcal);
   const eatTarget = Math.round(dailyTargetKcal);

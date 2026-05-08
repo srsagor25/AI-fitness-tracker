@@ -492,72 +492,36 @@ export function Workout() {
         </div>
       </Card>
 
-      {/* Daily activity: steps & today's training-kcal — both feed into the
-          diet calorie target via stepAdjustKcal and todaysWorkoutKcal. */}
+      {/* Training kcal today — workout sessions only. Steps now have their
+          own Activity → Steps tab; Sports go to Activity → Sports. */}
       <Card>
         <CardHeader
           kicker="Activity"
-          title="Today's Movement"
-          subtitle="Steps and training calories adjust your eating target."
+          title="Training Today"
+          subtitle="Calories burned from logged workout sessions only. Steps & sports live on their own Activity tabs."
           right={
-            <div className="flex flex-col items-end gap-1">
-              {stepAdjustKcal !== 0 && (
-                <Chip color={stepAdjustKcal > 0 ? "#4a6b3e" : "#c44827"}>
-                  Steps {stepAdjustKcal > 0 ? "+" : ""}
-                  {stepAdjustKcal} kcal
-                </Chip>
-              )}
-              {todaysWorkoutKcal > 0 && (
-                <Chip color="#4a6b3e">
-                  Training +{Math.round(todaysWorkoutKcal)} kcal
-                </Chip>
-              )}
-            </div>
+            todaysWorkoutKcal > 0 ? (
+              <Chip color="#4a6b3e">+{Math.round(todaysWorkoutKcal)} kcal</Chip>
+            ) : null
           }
         />
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div className="border-2 border-ink p-3 md:col-span-2">
-            <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted mb-2">
-              Steps Today
-            </div>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={() => setSteps(Math.max(0, steps - 1000))}>
-                −1k
-              </Button>
-              <input
-                type="number"
-                value={steps}
-                onChange={(e) => setSteps(Math.max(0, Number(e.target.value) || 0))}
-                className="flex-1 border-2 border-ink bg-paper px-2 py-1.5 font-display text-2xl font-black text-center"
-              />
-              <Button variant="outline" size="sm" onClick={() => setSteps(steps + 1000)}>
-                +1k
-              </Button>
-            </div>
-            <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted mt-1 italic">
-              Baseline {profile.stepAdjust?.baseline?.toLocaleString() || "—"} ·{" "}
-              {profile.stepAdjust?.lowThreshold?.toLocaleString() || "—"} low ·{" "}
-              {profile.stepAdjust?.highThreshold?.toLocaleString() || "—"} high
-            </div>
-          </div>
-          <div className="border-2 border-ink p-3">
-            <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted">
-              Training kcal today
-            </div>
-            <div className="font-display text-3xl font-black mt-1 leading-none" style={{ color: "#4a6b3e" }}>
-              +{Math.round(todaysWorkoutKcal)}
-              <span className="font-mono text-xs uppercase tracking-widest text-ink-muted ml-1">
-                kcal
-              </span>
-            </div>
-            <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted mt-1 italic">
-              From completed sessions today.
-            </div>
-          </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Stat
+            label="Training kcal today"
+            value={`+${Math.round(todaysWorkoutKcal)}`}
+            suffix="kcal"
+            accent="#4a6b3e"
+          />
+          {stepAdjustKcal !== 0 && (
+            <Stat
+              label="Step adjustment"
+              value={`${stepAdjustKcal > 0 ? "+" : ""}${stepAdjustKcal}`}
+              suffix="kcal"
+              accent={stepAdjustKcal > 0 ? "#4a6b3e" : "#c44827"}
+            />
+          )}
         </div>
       </Card>
-
-      <StepsHistory profile={profile} />
 
       <Card>
         <CardHeader
