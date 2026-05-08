@@ -5,7 +5,7 @@ import { Button, IconButton } from "../components/ui/Button.jsx";
 import { Field, TextInput, Select, Chip } from "../components/ui/Field.jsx";
 import { Modal } from "../components/ui/Modal.jsx";
 import { GROCERY_CATEGORIES } from "../store/profiles.js";
-import { getAllUnits, isContinuousUnit, defaultStep } from "../lib/units.js";
+import { getAllUnits, isContinuousUnit, defaultStep, formatQty } from "../lib/units.js";
 import {
   Plus,
   Trash2,
@@ -47,7 +47,23 @@ export function Grocery() {
   const [editing, setEditing] = useState(null);
   const [manualInput, setManualInput] = useState("");
 
+  // Global display mode for the inventory + auto-shopping. Persisted on
+  // the profile so it sticks across reloads. Three options:
+  //   - "auto":         honor each item's trackByPackets toggle (default)
+  //   - "packets":      force packet display where a packet size is set
+  //   - "conventional": ignore packets, show smart units (g↔kg, ml↔L, …)
+  const inventoryView = profile.inventoryView || "auto";
+  const setInventoryView = (v) => updateProfile({ inventoryView: v });
+
   const bufferDays = Number(profile.groceryBufferDays) || 0;
+
+  // Decide the display mode for one item, applying the global override.
+  function showAsPackets(it) {
+    const ps = Number(it.packetSize) || 0;
+    if (inventoryView === "conventional") return false;
+    if (inventoryView === "packets") return ps > 1;
+    return !!it.trackByPackets && ps > 1;
+  }
 
   // Per-item average daily consumption, computed from the activity log
   // over the last CONSUMPTION_WINDOW_DAYS. Only "consumed" events count;
@@ -154,7 +170,7 @@ export function Grocery() {
           }
         />
 
-        <div className="flex gap-2 mb-4">
+        <div className="flex gap-2 mb-3 flex-wrap">
           {[
             { id: "inventory", label: "Inventory" },
             { id: "shopping", label: "Auto-shopping" },
@@ -168,6 +184,31 @@ export function Grocery() {
               }`}
             >
               {v.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Global display mode — flips the whole list between packet view
+            and conventional units (g↔kg, ml↔L). "Auto" honors each item's
+            own track-by-packets toggle. */}
+        <div className="border-2 border-ink p-2 mb-4 flex items-center gap-2 flex-wrap text-[10px] font-mono uppercase tracking-[0.25em]">
+          <span className="text-ink-muted">Display:</span>
+          {[
+            { id: "auto", label: "Per-item", hint: "Use each item's own toggle" },
+            { id: "packets", label: "Packets", hint: "Show packs where set" },
+            { id: "conventional", label: "Conventional", hint: "g↔kg, ml↔L" },
+          ].map((m) => (
+            <button
+              key={m.id}
+              onClick={() => setInventoryView(m.id)}
+              title={m.hint}
+              className={`px-2.5 py-1 border-2 ${
+                inventoryView === m.id
+                  ? "bg-ink text-paper border-ink"
+                  : "border-ink hover:bg-ink hover:text-paper"
+              }`}
+            >
+              {m.label}
             </button>
           ))}
         </div>
@@ -197,8 +238,12 @@ export function Grocery() {
                   {grouped[cat].map((it) => {
                     const isLow = it.qty <= it.lowThreshold;
                     const ps = Math.max(1, Number(it.packetSize) || 1);
-                    const packetCount = it.trackByPackets ? it.qty / ps : null;
-                    const step = it.trackByPackets ? ps : defaultStep(it.unit);
+                    const packetMode = showAsPackets(it);
+                    const packetCount = packetMode ? it.qty / ps : null;
+                    const step = packetMode ? ps : defaultStep(it.unit);
+                    const fmtTotal = formatQty(it.qty, it.unit);
+                    const fmtThresh = formatQty(it.lowThreshold, it.unit);
+                    const fmtPack = formatQty(ps, it.unit);
                     return (
                       <li
                         key={it.key}
@@ -209,10 +254,10 @@ export function Grocery() {
                           <div className="flex-1 min-w-0">
                             <div className="font-body text-base flex items-center gap-2 flex-wrap">
                               <span className="break-words">{it.name}</span>
-                              {it.trackByPackets && (
+                              {packetMode && (
                                 <Chip color="#3b6aa3">
                                   <Package size={10} className="inline mr-1" />
-                                  {ps}{it.unit}/pack
+                                  {fmtPack.text}/pack
                                 </Chip>
                               )}
                               {isLow && <Chip color="#c44827">Low</Chip>}
@@ -222,14 +267,14 @@ export function Grocery() {
                               {it.optional && <Chip color="#6b5a3e">Optional</Chip>}
                             </div>
                             <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted">
-                              {it.trackByPackets ? (
+                              {packetMode ? (
                                 <>
                                   {(packetCount ?? 0).toFixed(packetCount % 1 === 0 ? 0 : 1)} pack
-                                  {(packetCount ?? 0) === 1 ? "" : "s"} · {Math.round(it.qty)}{it.unit} total
-                                  {" · "}low at {it.lowThreshold}{it.unit}
+                                  {(packetCount ?? 0) === 1 ? "" : "s"} · {fmtTotal.text} total
+                                  {" · "}low at {fmtThresh.text}
                                 </>
                               ) : (
-                                <>Threshold {it.lowThreshold}{it.unit}{ps > 1 ? ` · Packet ${ps}${it.unit}` : ""}</>
+                                <>Threshold {fmtThresh.text}{ps > 1 ? ` · Packet ${fmtPack.text}` : ""}</>
                               )}
                               {it.perishable && ` · keep ≤ ${it.maxDays || 7} days`}
                             </div>
@@ -239,11 +284,11 @@ export function Grocery() {
                           <IconButton
                             onClick={() => adjustGrocery(it.key, -step)}
                             aria-label="Decrease"
-                            title={it.trackByPackets ? `−1 pack (${ps}${it.unit})` : `−${step}${it.unit}`}
+                            title={packetMode ? `−1 pack (${fmtPack.text})` : `−${step}${it.unit}`}
                           >
                             −
                           </IconButton>
-                          {it.trackByPackets ? (
+                          {packetMode ? (
                             <div className="flex items-center gap-1">
                               <input
                                 type="number"
@@ -266,21 +311,28 @@ export function Grocery() {
                             <>
                               <input
                                 type="number"
-                                value={it.qty}
-                                onChange={(e) =>
-                                  setGroceryQty(it.key, Number(e.target.value) || 0)
-                                }
+                                value={fmtTotal.value}
+                                onChange={(e) => {
+                                  const v = Math.max(0, Number(e.target.value) || 0);
+                                  // Convert back to the stored unit before saving so
+                                  // the underlying qty stays in canonical units (g/ml).
+                                  let stored = v;
+                                  if (fmtTotal.unit === "kg" && it.unit === "g") stored = v * 1000;
+                                  else if (fmtTotal.unit === "L" && it.unit === "ml") stored = v * 1000;
+                                  setGroceryQty(it.key, stored);
+                                }}
+                                step={fmtTotal.unit === "kg" || fmtTotal.unit === "L" ? "0.1" : "1"}
                                 className="w-20 border-2 border-ink bg-paper px-2 py-1 font-display text-base text-center"
                               />
                               <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-ink-muted">
-                                {it.unit}
+                                {fmtTotal.unit}
                               </span>
                             </>
                           )}
                           <IconButton
                             onClick={() => adjustGrocery(it.key, step)}
                             aria-label="Increase"
-                            title={it.trackByPackets ? `+1 pack (${ps}${it.unit})` : `+${step}${it.unit}`}
+                            title={packetMode ? `+1 pack (${fmtPack.text})` : `+${step}${it.unit}`}
                           >
                             +
                           </IconButton>
@@ -394,21 +446,31 @@ export function Grocery() {
                               )}
                             </div>
                             <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted">
-                              {it.trackByPackets
-                                ? `Have ${(it.qty / Math.max(1, it.packetSize)).toFixed(
-                                    (it.qty / Math.max(1, it.packetSize)) % 1 === 0 ? 0 : 1,
-                                  )} pack${(it.qty / Math.max(1, it.packetSize)) === 1 ? "" : "s"} (${Math.round(it.qty)}${it.unit})`
-                                : `Have ${Math.round(it.qty)}${it.unit}`}
-                              {f.avgDaily > 0 && (
-                                <>
-                                  {" "}
-                                  · uses {f.avgDaily.toFixed(1)}{it.unit}/day · runs out in{" "}
-                                  {daysLeftDisplay}
-                                </>
-                              )}
-                              {" · "}Buy {packets} pack{packets === 1 ? "" : "s"} ({it.packetSize}
-                              {it.unit} each)
-                              {it.perishable && " · top up only"}
+                              {(() => {
+                                const haveFmt = formatQty(it.qty, it.unit);
+                                const psNum = Math.max(1, Number(it.packetSize) || 1);
+                                const packFmt = formatQty(psNum, it.unit);
+                                const showPack = showAsPackets(it);
+                                const haveStr = showPack
+                                  ? `Have ${(it.qty / psNum).toFixed(
+                                      (it.qty / psNum) % 1 === 0 ? 0 : 1,
+                                    )} pack${(it.qty / psNum) === 1 ? "" : "s"} (${haveFmt.text})`
+                                  : `Have ${haveFmt.text}`;
+                                return (
+                                  <>
+                                    {haveStr}
+                                    {f.avgDaily > 0 && (
+                                      <>
+                                        {" "}
+                                        · uses {formatQty(f.avgDaily, it.unit).text}/day · runs out in{" "}
+                                        {daysLeftDisplay}
+                                      </>
+                                    )}
+                                    {" · "}Buy {packets} pack{packets === 1 ? "" : "s"} ({packFmt.text} each)
+                                    {it.perishable && " · top up only"}
+                                  </>
+                                );
+                              })()}
                             </div>
                           </div>
                         </div>

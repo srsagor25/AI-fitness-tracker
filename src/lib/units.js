@@ -53,3 +53,66 @@ export function defaultStep(unit) {
   if (unit === "kg" || unit === "L") return 1;
   return 1;
 }
+
+// Smart "conventional" formatter — turns the stored qty into how a human
+// would read it. Mass: < 1000g shown as "750 g", ≥ 1000g shown as "1.5 kg".
+// Volume: same with ml ↔ L. Counts (pc, eggs, packs, etc.) stay numeric.
+//
+// Returns { value, unit, text } so callers can either compose their own UI
+// or just drop `text` in directly. Examples:
+//   formatQty(750, "g")  → { value: 750,  unit: "g",  text: "750 g" }
+//   formatQty(1500, "g") → { value: 1.5,  unit: "kg", text: "1.5 kg" }
+//   formatQty(12, "pc")  → { value: 12,   unit: "pc", text: "12 pc" }
+export function formatQty(qty, unit) {
+  const q = Number(qty) || 0;
+  // Mass
+  if (unit === "g") {
+    if (q >= 1000) {
+      const v = q / 1000;
+      return { value: v, unit: "kg", text: `${stripZeros(v.toFixed(2))} kg` };
+    }
+    return { value: q, unit: "g", text: `${Math.round(q)} g` };
+  }
+  if (unit === "kg") {
+    if (q < 1) {
+      const v = Math.round(q * 1000);
+      return { value: v, unit: "g", text: `${v} g` };
+    }
+    return { value: q, unit: "kg", text: `${stripZeros(q.toFixed(2))} kg` };
+  }
+  // Volume
+  if (unit === "ml") {
+    if (q >= 1000) {
+      const v = q / 1000;
+      return { value: v, unit: "L", text: `${stripZeros(v.toFixed(2))} L` };
+    }
+    return { value: q, unit: "ml", text: `${Math.round(q)} ml` };
+  }
+  if (unit === "L") {
+    if (q < 1) {
+      const v = Math.round(q * 1000);
+      return { value: v, unit: "ml", text: `${v} ml` };
+    }
+    return { value: q, unit: "L", text: `${stripZeros(q.toFixed(2))} L` };
+  }
+  // Everything else: keep the stored unit verbatim. For integer-feeling
+  // units we round; for unknown ones we pass through with one decimal max.
+  const isCount = unit === "pc" || unit === "pack" || unit === "bottle" ||
+                  unit === "can" || unit === "box" || unit === "tray" ||
+                  unit === "carton" || unit === "jar" || unit === "bag" ||
+                  unit === "tube" || unit === "scoop" || unit === "slice" ||
+                  unit === "head" || unit === "cup" || unit === "tbsp" ||
+                  unit === "tsp";
+  if (isCount) {
+    const v = Math.round(q * 10) / 10;
+    return { value: v, unit, text: `${stripZeros(v.toString())} ${unit}` };
+  }
+  return { value: q, unit, text: `${stripZeros((Math.round(q * 100) / 100).toString())} ${unit}` };
+}
+
+function stripZeros(s) {
+  // "1.50" → "1.5", "1.00" → "1", "1.5" → "1.5"
+  if (typeof s !== "string") s = String(s);
+  if (!s.includes(".")) return s;
+  return s.replace(/\.?0+$/, "");
+}
