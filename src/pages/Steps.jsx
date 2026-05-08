@@ -68,17 +68,29 @@ export function Steps() {
             </div>
           }
         />
+        {/* min-w-0 + text-2xl keeps the input from pushing the buttons out
+            of the card on a phone-width viewport. */}
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => setSteps(Math.max(0, steps - 1000))}>
+          <Button
+            variant="outline"
+            size="sm"
+            className="shrink-0"
+            onClick={() => setSteps(Math.max(0, steps - 1000))}
+          >
             −1k
           </Button>
           <input
             type="number"
             value={steps}
             onChange={(e) => setSteps(Math.max(0, Number(e.target.value) || 0))}
-            className="flex-1 border-2 border-ink bg-paper px-2 py-1.5 font-display text-3xl font-black text-center"
+            className="flex-1 min-w-0 w-full border-2 border-ink bg-paper px-2 py-1.5 font-display text-2xl font-black text-center"
           />
-          <Button variant="outline" size="sm" onClick={() => setSteps(steps + 1000)}>
+          <Button
+            variant="outline"
+            size="sm"
+            className="shrink-0"
+            onClick={() => setSteps(steps + 1000)}
+          >
             +1k
           </Button>
         </div>
