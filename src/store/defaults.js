@@ -21,9 +21,6 @@ export const BUILTIN_PROGRAMS = {
         id: "day1",
         name: "Mix",
         accent: "#c44827",
-        icon: "💪",
-        target: 2700,
-        suggestShake: "shake_power",
         exercises: [
           { id: "d1e1", name: "Back Squat", sets: 4, reps: 8, restSec: 150, url: "https://youtu.be/-bJIpOq-LWk" },
           { id: "d1e2", name: "Bench Press", sets: 4, reps: 8, restSec: 150, url: "https://youtu.be/SCVCLChPQFY" },
@@ -36,9 +33,6 @@ export const BUILTIN_PROGRAMS = {
         id: "day2",
         name: "Pull",
         accent: "#3b6aa3",
-        icon: "🎯",
-        target: 2750,
-        suggestShake: "shake_power",
         exercises: [
           { id: "d2e1", name: "Deadlift", sets: 5, reps: 6, restSec: 150, url: "https://youtu.be/AweC3UaM14o" },
           { id: "d2e2", name: "Overhead Press", sets: 4, reps: 8, restSec: 120, url: "https://youtu.be/cGnhixvC8uA" },
@@ -51,9 +45,6 @@ export const BUILTIN_PROGRAMS = {
         id: "day3",
         name: "Power",
         accent: "#4a6b3e",
-        icon: "⚡",
-        target: 2800,
-        suggestShake: "shake_power",
         exercises: [
           { id: "d3e1", name: "Front Squat", sets: 4, reps: 8, restSec: 150, url: "https://youtu.be/HHxNbhP16UE" },
           { id: "d3e2", name: "Incline Dumbbell Press", sets: 4, reps: 9, restSec: 120, url: "https://youtu.be/5CECBjd7HLQ" },
@@ -66,9 +57,6 @@ export const BUILTIN_PROGRAMS = {
         id: "day4",
         name: "Arms",
         accent: "#6b5a3e",
-        icon: "💪",
-        target: 2600,
-        suggestShake: "shake_power",
         exercises: [
           { id: "d4e1", name: "DB Scott Curl", sets: 3, reps: 11, restSec: 60, url: "https://youtu.be/u00CqDeAHTE" },
           { id: "d4e2", name: "Close-Grip Assisted Dip", sets: 3, reps: 8, restSec: 60, url: "https://youtu.be/mpcPTUAhfto" },
@@ -90,9 +78,6 @@ export const BUILTIN_PROGRAMS = {
         id: "push",
         name: "Push",
         accent: "#c44827",
-        icon: "💪",
-        target: 2700,
-        suggestShake: "shake_power",
         exercises: [
           { id: "p1", name: "Chest Press Machine", sets: 4, reps: 10, restSec: 90, url: "https://youtu.be/65npK4Ijz1c" },
           { id: "p2", name: "Incline DB Press", sets: 3, reps: 10, restSec: 90, url: "https://youtu.be/5CECBjd7HLQ" },
@@ -105,9 +90,6 @@ export const BUILTIN_PROGRAMS = {
         id: "pull",
         name: "Pull",
         accent: "#3b6aa3",
-        icon: "🎯",
-        target: 2700,
-        suggestShake: "shake_power",
         exercises: [
           { id: "pl1", name: "Lat Pulldown", sets: 4, reps: 10, restSec: 90, url: "https://youtu.be/KXMROsEH6c8" },
           { id: "pl2", name: "Seated Row", sets: 4, reps: 10, restSec: 90, url: "https://youtu.be/lJoozxC0Rns" },
@@ -120,9 +102,6 @@ export const BUILTIN_PROGRAMS = {
         id: "legs",
         name: "Legs",
         accent: "#4a6b3e",
-        icon: "🦵",
-        target: 2800,
-        suggestShake: "shake_power",
         exercises: [
           { id: "lg1", name: "Back Squat", sets: 4, reps: 10, restSec: 120, url: "https://youtu.be/-bJIpOq-LWk" },
           { id: "lg2", name: "Leg Press", sets: 3, reps: 10, restSec: 90, url: "https://youtu.be/gspQiEILqOw" },

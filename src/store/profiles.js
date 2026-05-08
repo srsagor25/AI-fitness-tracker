@@ -29,19 +29,13 @@ export const FOODS = {
 
 export const GROCERY_CATEGORIES = ["Protein", "Dairy & Shake", "Aromatics", "Moshla", "Fresh", "Pantry"];
 
-// Rest-day defaults are kept on the profile rather than per-program — every
-// program implicitly gets a "rest" entry, and the user can edit its target
-// once in Profile.
+// Diet uses just two day types: Rest and Workout. Workout day = rest +
+// WORKOUT_DAY_BONUS_KCAL — covered by an extra shake/snack. Sports are
+// already counted via the Activity tab, so we don't need separate types
+// for football/cricket/etc.
 const SAIDUR_REST_DAY = {
   id: "rest", label: "Rest Day", icon: "🛏️", color: "#6b5a3e", target: 2400, suggestShake: "shake_standard",
 };
-
-// Extras layer on top of whatever the active program supplies. Sports
-// (football, cricket, padel, …) are logged on the Activity → Sports tab,
-// where their MET-based kcal already lifts the daily eating target — so
-// they don't need a separate day type here. Add extras only for recurring
-// activities that aren't covered by a sport entry.
-const SAIDUR_EXTRA_DAY_TYPES = [];
 
 const SAIDUR_LUNCH_PRESETS = {
   lunch_chicken_thigh: { key: "lunch_chicken_thigh", name: "Chicken Thigh Bhuna + Rice", icon: "🍗",
@@ -163,7 +157,6 @@ export const SAIDUR_PROFILE = {
   cheatBaselineKcal: 1019,
   stepAdjust: { lowThreshold: 8000, highThreshold: 12000, lowDelta: -100, highDelta: 100, baseline: 10000 },
   restDayType: SAIDUR_REST_DAY,
-  extraDayTypes: SAIDUR_EXTRA_DAY_TYPES,
   lunchPresets: SAIDUR_LUNCH_PRESETS,
   shakePresets: SAIDUR_SHAKE_PRESETS,
   dinnerPresets: SAIDUR_DINNER_PRESETS,
@@ -178,9 +171,6 @@ export const SAIDUR_PROFILE = {
 const BLANK_REST_DAY = {
   id: "rest", label: "Rest Day", icon: "🛏️", color: "#6b5a3e", target: 2000, suggestShake: null,
 };
-const BLANK_EXTRA_DAY_TYPES = [
-  { id: "cardio", label: "Cardio Day", icon: "🏃", color: "#4a6b3e", target: 2200, suggestShake: null },
-];
 
 export const BLANK_PROFILE = {
   id: "blank",
@@ -202,7 +192,6 @@ export const BLANK_PROFILE = {
   cheatBaselineKcal: 1000,
   stepAdjust: { lowThreshold: 8000, highThreshold: 12000, lowDelta: -100, highDelta: 100, baseline: 10000 },
   restDayType: BLANK_REST_DAY,
-  extraDayTypes: BLANK_EXTRA_DAY_TYPES,
   lunchPresets: { lunch_simple: { key: "lunch_simple", name: "Simple Lunch", icon: "🍽️",
     items: [{ food: "chicken_breast", amount: 200 }, { food: "rice", amount: 150 }, { food: "cucumber", amount: 100 }] } },
   shakePresets: { shake_simple: { key: "shake_simple", name: "Simple Shake", icon: "🥤",
@@ -231,54 +220,27 @@ export function cloneTemplate(template) {
   return JSON.parse(JSON.stringify(template));
 }
 
-// Build the day-type chip list for the Diet tab from the active workout
-// program plus the profile's rest day and any user-defined extras (e.g.
-// football). This keeps the chips and their kcal targets in sync with the
-// program selected on the Activity tab — switching programs swaps the
-// available day types automatically.
-//
-// Rules:
-//   1. Always include the rest day type (from profile.restDayType, with a
-//      sane fallback so older profiles keep working).
-//   2. For each day in activeProgram.days, derive a day type using its
-//      target/icon/accent. If the program day omits a target, fall back to
-//      a default training target.
-//   3. Append profile.extraDayTypes (deduped by id — if a program already
-//      defines a "football" day, the program version wins).
-export function composeDayTypes(activeProgram, profile = {}) {
-  const out = [];
-  const seen = new Set();
+// Diet uses two day types: Rest and Workout. A workout day eats this much
+// more than rest; the surplus is meant to be covered by an extra shake or
+// snack. Sports/steps still feed kcal independently via the Activity tab.
+export const WORKOUT_DAY_BONUS_KCAL = 300;
 
+// Build the day-type chip list. Always exactly two entries: Rest (from
+// profile.restDayType) and Workout (rest target + WORKOUT_DAY_BONUS_KCAL).
+// activeProgram is accepted for API symmetry but no longer affects targets.
+export function composeDayTypes(_activeProgram, profile = {}) {
   const rest =
     profile.restDayType ||
     { id: "rest", label: "Rest Day", icon: "🛏️", color: "#6b5a3e", target: 2200, suggestShake: null };
-  out.push(rest);
-  seen.add(rest.id);
-
-  if (activeProgram && Array.isArray(activeProgram.days)) {
-    for (const d of activeProgram.days) {
-      if (!d || !d.id || seen.has(d.id)) continue;
-      out.push({
-        id: d.id,
-        label: d.label || (d.name ? `${d.name} Day` : d.id),
-        icon: d.icon || "💪",
-        color: d.accent || d.color || "#c44827",
-        target: Number(d.target) || 2500,
-        suggestShake: d.suggestShake || null,
-        fromProgram: activeProgram.id,
-      });
-      seen.add(d.id);
-    }
-  }
-
-  const extras = Array.isArray(profile.extraDayTypes) ? profile.extraDayTypes : [];
-  for (const e of extras) {
-    if (!e || !e.id || seen.has(e.id)) continue;
-    out.push(e);
-    seen.add(e.id);
-  }
-
-  return out;
+  const workout = {
+    id: "workout",
+    label: "Workout Day",
+    icon: "💪",
+    color: "#c44827",
+    target: (Number(rest.target) || 2200) + WORKOUT_DAY_BONUS_KCAL,
+    suggestShake: "shake_power",
+  };
+  return [rest, workout];
 }
 
 // Look up a food by key, merging the base FOODS entry with any user override.

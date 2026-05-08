@@ -14,7 +14,6 @@ export function Profile() {
     selectProfileTemplate,
     activeProgramId,
     setActiveProgramId,
-    activeProgram,
     customPrograms,
     dayTypes,
     showSnack,
@@ -249,12 +248,7 @@ export function Profile() {
       />
 
 
-      <DayTypesCard
-        profile={profile}
-        dayTypes={dayTypes}
-        activeProgram={activeProgram}
-        update={update}
-      />
+      <DayTypesCard profile={profile} dayTypes={dayTypes} update={update} />
 
       {profile.fastFoodTips && profile.fastFoodTips.length > 0 && (
         <Card>
@@ -396,129 +390,57 @@ function GoalSuggestion({ profile, activeProgramId, setActiveProgramId, customPr
   );
 }
 
-// Composed day-types card. The list shown on the Diet tab comes from three
-// places: profile.restDayType, the active program's days (read-only here —
-// edit on the Programs tab), and profile.extraDayTypes (editable here).
-function DayTypesCard({ profile, dayTypes, activeProgram, update }) {
-  const restTarget = profile.restDayType?.target ?? 2200;
-  const extras = Array.isArray(profile.extraDayTypes) ? profile.extraDayTypes : [];
+// Day types are just Rest and Workout. Workout = rest + 300 kcal, with the
+// surplus expected to come from an extra shake/snack. Sports/steps already
+// feed kcal independently via the Activity tab, so we don't need extras.
+function DayTypesCard({ profile, dayTypes, update }) {
+  const rest = dayTypes.find((d) => d.id === "rest") || { target: 2200 };
+  const workout = dayTypes.find((d) => d.id === "workout") || { target: rest.target + 300 };
 
   function setRestTarget(v) {
     const t = Math.max(1200, Math.round(Number(v) || 0));
-    update({ restDayType: { ...(profile.restDayType || {}), id: "rest", label: "Rest Day", icon: "🛏️", color: "#6b5a3e", target: t } });
-  }
-
-  function updateExtra(idx, patch) {
-    const next = extras.map((e, i) => (i === idx ? { ...e, ...patch } : e));
-    update({ extraDayTypes: next });
-  }
-  function removeExtra(idx) {
-    update({ extraDayTypes: extras.filter((_, i) => i !== idx) });
-  }
-  function addExtra() {
-    const id = `extra_${Date.now().toString(36)}`;
     update({
-      extraDayTypes: [
-        ...extras,
-        { id, label: "Custom Day", icon: "⭐", color: "#3b6aa3", target: 2400, suggestShake: null },
-      ],
+      restDayType: {
+        ...(profile.restDayType || {}),
+        id: "rest",
+        label: "Rest Day",
+        icon: "🛏️",
+        color: "#6b5a3e",
+        target: t,
+      },
     });
   }
 
   return (
-    <>
-      <Card>
-        <CardHeader
-          kicker="Day Types"
-          title="Today's targets by day"
-          subtitle={
-            activeProgram
-              ? `Auto-built from ${activeProgram.name} + your rest day + extras. Switch programs on Activity → Programs to change the training-day list.`
-              : "Auto-built from your active program + rest day + extras."
-          }
-        />
-        <ul className="divide-y divide-ink/30 border-y border-ink/30">
-          {dayTypes.map((dt) => (
-            <li key={dt.id} className="py-2 flex items-center gap-3">
-              <span className="text-2xl shrink-0">{dt.icon}</span>
-              <div className="flex-1 min-w-0">
-                <div className="font-body text-base break-words">{dt.label}</div>
-                <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted">
-                  Target {dt.target} kcal
-                  {dt.fromProgram ? ` · from ${activeProgram?.name || dt.fromProgram}` : dt.id === "rest" ? " · rest" : " · extra"}
-                </div>
+    <Card>
+      <CardHeader
+        kicker="Day Types"
+        title="Rest vs Workout target"
+        subtitle="Workout day eats 300 kcal more than rest — covered by an extra shake/snack. Sports & steps add kcal on top automatically."
+      />
+      <ul className="divide-y divide-ink/30 border-y border-ink/30 mb-4">
+        {dayTypes.map((dt) => (
+          <li key={dt.id} className="py-2 flex items-center gap-3">
+            <span className="text-2xl shrink-0">{dt.icon}</span>
+            <div className="flex-1 min-w-0">
+              <div className="font-body text-base break-words">{dt.label}</div>
+              <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted">
+                Target {dt.target} kcal
+                {dt.id === "workout" ? " · rest +300" : ""}
               </div>
-              <Chip color={dt.color}>{dt.id}</Chip>
-            </li>
-          ))}
-        </ul>
-      </Card>
+            </div>
+            <Chip color={dt.color}>{dt.id}</Chip>
+          </li>
+        ))}
+      </ul>
 
-      <Card>
-        <CardHeader
-          kicker="Day Types · Edit"
-          title="Rest day & extras"
-          subtitle="Training-day targets live on the program (edit them via Activity → Programs). Rest and extras are editable here."
+      <Field label="Rest-day kcal target" hint={`Workout day will be ${rest.target + 300} kcal.`}>
+        <TextInput
+          type="number"
+          value={rest.target}
+          onChange={(e) => setRestTarget(e.target.value)}
         />
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-          <Field label="Rest-day kcal target">
-            <TextInput
-              type="number"
-              value={restTarget}
-              onChange={(e) => setRestTarget(e.target.value)}
-            />
-          </Field>
-        </div>
-
-        <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted mb-2">
-          Extra day types
-        </div>
-        <ul className="space-y-2">
-          {extras.length === 0 && (
-            <li className="font-body text-sm italic text-ink-muted">
-              No extras yet. Add one for activities outside your training program (e.g. football night).
-            </li>
-          )}
-          {extras.map((e, i) => (
-            <li key={e.id} className="border-2 border-ink p-3 grid grid-cols-1 md:grid-cols-5 gap-2 items-end">
-              <Field label="Icon">
-                <TextInput
-                  value={e.icon || ""}
-                  onChange={(ev) => updateExtra(i, { icon: ev.target.value })}
-                />
-              </Field>
-              <Field label="Label">
-                <TextInput
-                  value={e.label || ""}
-                  onChange={(ev) => updateExtra(i, { label: ev.target.value })}
-                />
-              </Field>
-              <Field label="Color">
-                <TextInput
-                  type="color"
-                  value={e.color || "#3b6aa3"}
-                  onChange={(ev) => updateExtra(i, { color: ev.target.value })}
-                />
-              </Field>
-              <Field label="Target kcal">
-                <TextInput
-                  type="number"
-                  value={e.target || 2400}
-                  onChange={(ev) =>
-                    updateExtra(i, { target: Math.max(1200, Math.round(Number(ev.target.value) || 0)) })
-                  }
-                />
-              </Field>
-              <Button variant="outline" size="sm" onClick={() => removeExtra(i)}>
-                Remove
-              </Button>
-            </li>
-          ))}
-        </ul>
-        <Button variant="primary" size="sm" className="mt-3" onClick={addExtra}>
-          Add extra day type
-        </Button>
-      </Card>
-    </>
+      </Field>
+    </Card>
   );
 }

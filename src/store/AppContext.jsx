@@ -65,7 +65,14 @@ export function AppProvider({ children }) {
     }
     return [];
   });
-  const [dayTypeId, setDayTypeId] = useState(() => load(`dayType:${dateKey}`, "rest"));
+  const [dayTypeId, setDayTypeId] = useState(() => {
+    // Stored ids may be legacy (push/pull/legs/day1/…); anything that isn't
+    // the literal "rest" maps to "workout" now. Missing key → caller will
+    // re-derive from today's program in an effect below.
+    const stored = load(`dayType:${dateKey}`, null);
+    if (stored == null) return null;
+    return stored === "rest" ? "rest" : "workout";
+  });
   const [medsTakenToday, setMedsTakenToday] = useState(() => load(`meds:taken:${dateKey}`, []));
   // Sleep: { hours, bedTime?, wakeTime?, quality? } stored per day.
   const [sleep, setSleep] = useState(() => load(`sleep:${dateKey}`, null));
@@ -119,45 +126,35 @@ export function AppProvider({ children }) {
     }, 2200);
   }, []);
 
-  // One-time migration: older saved profiles stored a flat `dayTypes` array
-  // and no `restDayType`/`extraDayTypes`. Convert here so the composed
-  // day-type list matches the new program-driven scheme. Also rewrites the
-  // legacy "PPL + football" public label since football is now logged via
-  // Activity → Sports rather than as a day type.
+  // One-time profile migration: collapse the old per-program day-type
+  // system into the new Rest + Workout pair, and clean up the legacy
+  // "PPL + football" public label.
   useEffect(() => {
     setProfile((p) => {
-      const needsDayTypeMigration = !(p.restDayType && Array.isArray(p.extraDayTypes));
+      const needsRestMigration = !p.restDayType;
+      const hasLegacyExtras = Array.isArray(p.extraDayTypes);
+      const hasLegacyDayTypes = Array.isArray(p.dayTypes);
       const needsLabelMigration =
         typeof p.publicLabel === "string" && /\+\s*football\b/i.test(p.publicLabel);
-      if (!needsDayTypeMigration && !needsLabelMigration) return p;
 
-      let next = { ...p };
+      if (!needsRestMigration && !hasLegacyExtras && !hasLegacyDayTypes && !needsLabelMigration) {
+        return p;
+      }
 
-      if (needsDayTypeMigration) {
-        const legacy = Array.isArray(p.dayTypes) ? p.dayTypes : [];
-        const programDayIds = new Set();
-        for (const prog of Object.values(BUILTIN_PROGRAMS)) {
-          for (const d of prog.days || []) programDayIds.add(d.id);
-        }
-        const restFromLegacy = legacy.find((d) => d.id === "rest");
-        const restDayType =
-          p.restDayType ||
+      const next = { ...p };
+
+      if (needsRestMigration) {
+        const legacy = hasLegacyDayTypes ? p.dayTypes : [];
+        const restFromLegacy = legacy.find((d) => d?.id === "rest");
+        next.restDayType =
           restFromLegacy ||
           { id: "rest", label: "Rest Day", icon: "🛏️", color: "#6b5a3e", target: 2200, suggestShake: null };
-        // Anything in the legacy list that isn't "rest", isn't a program day,
-        // and isn't a sport id (football, cricket, padel, …) becomes an extra
-        // day type. Sports already feed kcal via the Sports tab, so we skip
-        // them to avoid double-counting.
-        const sportIds = new Set(["football", "cricket", "padel", "tennis", "basketball", "volleyball", "swimming", "running", "cycling"]);
-        const extras =
-          Array.isArray(p.extraDayTypes) && p.extraDayTypes.length > 0
-            ? p.extraDayTypes
-            : legacy.filter(
-                (d) => d.id !== "rest" && !programDayIds.has(d.id) && !sportIds.has(d.id),
-              );
-        next = { ...next, restDayType, extraDayTypes: extras };
-        delete next.dayTypes;
       }
+
+      // Drop legacy fields — Diet now uses only restDayType + a derived
+      // workout entry, no extras.
+      if (hasLegacyDayTypes) delete next.dayTypes;
+      if (hasLegacyExtras) delete next.extraDayTypes;
 
       if (needsLabelMigration) {
         next.publicLabel = next.publicLabel
@@ -168,6 +165,18 @@ export function AppProvider({ children }) {
 
       return next;
     });
+
+    // Also collapse any saved per-day dayType keys (push/pull/legs/day1/…)
+    // to "rest" or "workout" so historical reads stay coherent.
+    try {
+      const keys = listKeys("dayType:");
+      for (const k of keys) {
+        const v = load(k, null);
+        if (v && v !== "rest" && v !== "workout") save(k, "workout");
+      }
+    } catch {
+      // listKeys is best-effort — harmless if it fails
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -204,7 +213,12 @@ export function AppProvider({ children }) {
   useEffect(() => save(`coffee:${dateKey}`, coffeeLog), [coffeeLog, dateKey]);
   useEffect(() => save(`steps:${dateKey}`, steps), [steps, dateKey]);
   useEffect(() => save(`water:${dateKey}`, waterLog), [waterLog, dateKey]);
-  useEffect(() => save(`dayType:${dateKey}`, dayTypeId), [dayTypeId, dateKey]);
+  useEffect(() => {
+    // null = follow program auto-default; only persist explicit picks so a
+    // page reload still auto-derives if the user never overrode the choice.
+    if (dayTypeId == null) remove(`dayType:${dateKey}`);
+    else save(`dayType:${dateKey}`, dayTypeId);
+  }, [dayTypeId, dateKey]);
   useEffect(() => save(`meds:taken:${dateKey}`, medsTakenToday), [medsTakenToday, dateKey]);
   useEffect(() => {
     if (sleep) save(`sleep:${dateKey}`, sleep);
@@ -237,7 +251,7 @@ export function AppProvider({ children }) {
     setMeals(blankMeals());
     setCheats([]);
     setSteps(0);
-    setDayTypeId("rest");
+    setDayTypeId(null); // auto-derive from today's program
     showSnack(`Loaded ${tpl.name} profile`);
   }
 
@@ -268,23 +282,22 @@ export function AppProvider({ children }) {
     }
   }, [activeProgram, weeks]);
 
-  // ----- Day types (derived from active program + profile rest/extras) -----
-  const dayTypes = useMemo(
-    () => composeDayTypes(activeProgram, profile),
-    [activeProgram, profile],
-  );
+  // ----- Day types (always exactly Rest + Workout) -----
+  const dayTypes = useMemo(() => composeDayTypes(activeProgram, profile), [activeProgram, profile]);
+
+  // Today's scheduled program day determines the auto-default. We need this
+  // before dayType resolves, so compute todaysDayId here even though the
+  // workout-tab values below redo it for clarity.
+  const _todayWeekIndex = dayOfWeek();
+  const _todaysDayId = (weeks[activeProgram.id] || activeProgram.defaultWeek)[_todayWeekIndex];
+  const autoDayTypeId = _todaysDayId && _todaysDayId !== "rest" ? "workout" : "rest";
+
+  // dayTypeId === null means "no explicit choice yet — follow the program".
+  const effectiveDayTypeId = dayTypeId || autoDayTypeId;
   const dayType = useMemo(
-    () => dayTypes.find((d) => d.id === dayTypeId) || dayTypes[0],
-    [dayTypes, dayTypeId],
+    () => dayTypes.find((d) => d.id === effectiveDayTypeId) || dayTypes[0],
+    [dayTypes, effectiveDayTypeId],
   );
-  // If the saved dayTypeId is no longer in the composed list (e.g. user
-  // switched programs and the previous day id doesn't exist anymore), fall
-  // back to "rest" so chips and target stay coherent.
-  useEffect(() => {
-    if (!dayTypes.some((d) => d.id === dayTypeId)) {
-      setDayTypeId("rest");
-    }
-  }, [dayTypes, dayTypeId]);
 
   const todayWeekIndex = dayOfWeek();
   const todaysDayId = (weeks[activeProgram.id] || activeProgram.defaultWeek)[todayWeekIndex];
@@ -959,7 +972,7 @@ export function AppProvider({ children }) {
     steps, setSteps, stepAdjustKcal,
     waterLog, addWaterEntry, removeWaterEntry,
     sleep, setSleepEntry, clearSleep,
-    dayTypeId, setDayTypeId, dayType, dayTypes,
+    dayTypeId: effectiveDayTypeId, setDayTypeId, dayType, dayTypes,
     clearDay,
     // totals + helpers
     dayTotals, dailyTargetKcal,

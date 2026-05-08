@@ -126,7 +126,7 @@ export function Diet() {
         <CardHeader
           kicker="Today"
           title="Day Type & Energy"
-          subtitle="Pick your day type — target adjusts automatically."
+          subtitle="Workout day = rest +300 kcal (extra shake/snack). Sports & steps add on top automatically."
           right={
             <Button variant="ghost" size="sm" onClick={() => {
               if (confirm("Clear today's meals, coffee, and steps?")) clearDay();
