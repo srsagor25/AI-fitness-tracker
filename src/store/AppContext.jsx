@@ -698,6 +698,31 @@ export function AppProvider({ children }) {
     setCheats((prev) => prev.filter((m) => m.id !== id));
   }
 
+  // Save a meal that the user just composed as a reusable preset under
+  // the appropriate slot map (profile.breakfastPresets, lunchPresets,
+  // shakePresets, dinnerPresets, snackPresets). Slot id is the key the
+  // Diet tab uses; preset shape matches the seeded presets so the
+  // existing pickers render it without changes.
+  function saveCustomPreset(slot, preset) {
+    if (!preset || !preset.name) return;
+    const mapKey = `${slot}Presets`;
+    const key = preset.key || `custom_${Date.now().toString(36)}`;
+    const entry = { ...preset, key };
+    setProfile((p) => ({
+      ...p,
+      [mapKey]: { ...(p[mapKey] || {}), [key]: entry },
+    }));
+    showSnack(`Saved "${preset.name}" to ${slot} presets`);
+  }
+  function deleteCustomPreset(slot, key) {
+    const mapKey = `${slot}Presets`;
+    setProfile((p) => {
+      const next = { ...(p[mapKey] || {}) };
+      delete next[key];
+      return { ...p, [mapKey]: next };
+    });
+  }
+
   function clearDay() {
     setMeals(blankMeals());
     setCheats([]);
@@ -1204,6 +1229,7 @@ export function AppProvider({ children }) {
     dateKey,
     meals, addMealToSlot, removeMealFromSlot,
     cheats, addCheat, removeCheat, cheatSurplus, cheatBaselineKcal,
+    saveCustomPreset, deleteCustomPreset,
     coffeeLog, addCoffeeEntry, removeCoffeeEntry, toggleCoffeeSchedule,
     steps, setSteps, stepAdjustKcal,
     waterLog, addWaterEntry, removeWaterEntry,

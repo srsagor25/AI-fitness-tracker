@@ -180,6 +180,7 @@ export function Dashboard({ setTab }) {
     // matching preset is attached to the reminder so the Take button on the
     // card can one-tap log it without opening the Diet tab.
     const slotIcons = { breakfast: "🍳", lunch: "🍱", shake: "🥤", dinner: "🍽️" };
+    const slotLabels = { breakfast: "Breakfast", lunch: "Lunch", shake: "Shake / Snack", dinner: "Dinner" };
     const slotMealTimes = profile.mealTimes || {};
     const presetsBySlot = {
       breakfast: profile.breakfastPresets || {},
@@ -219,7 +220,7 @@ export function Dashboard({ setTab }) {
         icon: Utensils,
         domain: "diet",
         emoji: slotIcons[slot],
-        label: slot[0].toUpperCase() + slot.slice(1),
+        label: slotLabels[slot] || slot[0].toUpperCase() + slot.slice(1),
         detail,
         countdown: logged ? null : ms,
         urgency: logged

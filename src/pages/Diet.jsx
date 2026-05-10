@@ -20,11 +20,14 @@ import {
 } from "lucide-react";
 
 const SLOTS = [
-  { id: "breakfast", label: "Breakfast", icon: "🍳" },
-  { id: "lunch",     label: "Lunch",     icon: "🍱" },
-  { id: "shake",     label: "Shake",     icon: "🥤" },
-  { id: "dinner",    label: "Dinner",    icon: "🍽️" },
-  { id: "snack",     label: "Snack",     icon: "🥜" },
+  { id: "breakfast", label: "Breakfast",     icon: "🍳" },
+  { id: "lunch",     label: "Lunch",         icon: "🍱" },
+  // Slot id stays "shake" so existing data + day-totals math don't
+  // break — the label just makes it clear you can use it for either
+  // a shake or a small snack.
+  { id: "shake",     label: "Shake / Snack", icon: "🥤" },
+  { id: "dinner",    label: "Dinner",        icon: "🍽️" },
+  { id: "snack",     label: "Anytime snack", icon: "🥜" },
 ];
 
 export function Diet() {
@@ -421,16 +424,21 @@ function PresetPickerModal({ slot, presets, onClose, onPick }) {
 }
 
 function CustomMealModal({ slot, onClose, onSave }) {
-  const { calc, customFoods } = useApp();
+  const { calc, customFoods, saveCustomPreset } = useApp();
   const allFoods = useMemo(() => getAllFoods(customFoods), [customFoods]);
   const firstKey = allFoods[0]?.key || Object.keys(FOODS)[0];
   const [name, setName] = useState("");
+  const [icon, setIcon] = useState("✏️");
   const [items, setItems] = useState([{ food: firstKey, amount: 100 }]);
   const [direct, setDirect] = useState(false);
   const [directKcal, setDirectKcal] = useState("");
   const [directProtein, setDirectProtein] = useState("");
   const [directFat, setDirectFat] = useState("");
   const [directCarbs, setDirectCarbs] = useState("");
+  // Save-as-preset toggle: when on, the meal is added to
+  // profile.{slot}Presets in addition to being logged for today, so the
+  // user can pick it again from the preset picker next time.
+  const [saveAsPreset, setSaveAsPreset] = useState(false);
 
   function addItem() {
     setItems([...items, { food: firstKey, amount: 100 }]);
@@ -446,25 +454,26 @@ function CustomMealModal({ slot, onClose, onSave }) {
 
   function handleSave() {
     if (!name.trim()) return;
-    if (direct) {
-      onSave({
-        name: name.trim(),
-        icon: "✏️",
-        items: [
-          {
-            direct: true,
-            name: name.trim(),
-            amount: 1,
-            kcal: Number(directKcal) || 0,
-            protein: Number(directProtein) || 0,
-            fat: Number(directFat) || 0,
-            carbs: Number(directCarbs) || 0,
-          },
-        ],
-      });
-    } else {
-      onSave({ name: name.trim(), icon: "✏️", items });
-    }
+    const built = direct
+      ? {
+          name: name.trim(),
+          icon,
+          items: [
+            {
+              direct: true,
+              name: name.trim(),
+              amount: 1,
+              kcal: Number(directKcal) || 0,
+              protein: Number(directProtein) || 0,
+              fat: Number(directFat) || 0,
+              carbs: Number(directCarbs) || 0,
+            },
+          ],
+        }
+      : { name: name.trim(), icon, items };
+
+    if (saveAsPreset) saveCustomPreset(slot, built);
+    onSave(built);
   }
 
   return (
@@ -483,9 +492,23 @@ function CustomMealModal({ slot, onClose, onSave }) {
       }
     >
       <div className="space-y-3">
-        <Field label="Meal name">
-          <TextInput value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Chipotle bowl" />
-        </Field>
+        <div className="grid grid-cols-[80px_1fr] gap-2">
+          <Field label="Icon">
+            <TextInput
+              value={icon}
+              onChange={(e) => setIcon(e.target.value)}
+              maxLength={4}
+              placeholder="🥗"
+            />
+          </Field>
+          <Field label="Meal name">
+            <TextInput
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Chipotle bowl"
+            />
+          </Field>
+        </div>
 
         <div className="flex gap-2">
           <button
@@ -565,6 +588,23 @@ function CustomMealModal({ slot, onClose, onSave }) {
             </div>
           </div>
         )}
+
+        {/* Save-as-preset toggle. Adds this meal to profile.{slot}Presets
+            so it appears in the preset picker for this slot next time. */}
+        <label className="border-2 border-ink p-3 flex items-start gap-2 bg-ink/5 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={saveAsPreset}
+            onChange={(e) => setSaveAsPreset(e.target.checked)}
+            className="mt-1"
+          />
+          <div className="flex-1 min-w-0">
+            <div className="font-display text-base font-bold">Save as preset</div>
+            <div className="font-body text-sm italic text-ink-muted">
+              Add this to your {slot} presets so you can pick it with one tap next time.
+            </div>
+          </div>
+        </label>
       </div>
     </Modal>
   );
