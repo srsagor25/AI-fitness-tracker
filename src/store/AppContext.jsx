@@ -18,10 +18,12 @@ function uid(prefix = "id") {
   return `${prefix}_${Math.random().toString(36).slice(2, 9)}`;
 }
 
-const SLOTS = ["lunch", "shake", "dinner", "snack"];
+// Order matters — this is the chronological order of the day, used by
+// pages that render slot lists and by reminders that surface "next up".
+const SLOTS = ["breakfast", "lunch", "shake", "dinner", "snack"];
 
 function blankMeals() {
-  return { lunch: [], shake: [], dinner: [], snack: [] };
+  return { breakfast: [], lunch: [], shake: [], dinner: [], snack: [] };
 }
 
 export function AppProvider({ children }) {
@@ -33,7 +35,12 @@ export function AppProvider({ children }) {
   // hold the provider key in Vercel env vars. Nothing here in the browser.)
 
   // ----- Per-day data -----
-  const [meals, setMeals] = useState(() => load(`meals:${dateKey}`, blankMeals()));
+  // Hydrate today's meals; older saves predate the breakfast slot, so
+  // fold in defaults to ensure every slot key exists.
+  const [meals, setMeals] = useState(() => {
+    const stored = load(`meals:${dateKey}`, null);
+    return stored ? { ...blankMeals(), ...stored } : blankMeals();
+  });
   const [cheats, setCheats] = useState(() => load(`cheats:${dateKey}`, []));
   // Coffee: legacy was a boolean[] aligned with profile.coffeeSchedule. Now
   // it's an array of entries { id, scheduleIdx?, qty, unit, ts? }. Booleans
@@ -376,7 +383,14 @@ export function AppProvider({ children }) {
 
   const dayTotals = useMemo(() => {
     const out = { kcal: 0, protein: 0, fat: 0, carbs: 0 };
-    const allMeals = [...meals.lunch, ...meals.shake, ...meals.dinner, ...meals.snack, ...cheats];
+    const allMeals = [
+      ...(meals.breakfast || []),
+      ...(meals.lunch || []),
+      ...(meals.shake || []),
+      ...(meals.dinner || []),
+      ...(meals.snack || []),
+      ...cheats,
+    ];
     for (const m of allMeals) {
       const t = calcMeal(m.items, customFoods);
       out.kcal += t.kcal;

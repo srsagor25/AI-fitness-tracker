@@ -37,6 +37,19 @@ const SAIDUR_REST_DAY = {
   id: "rest", label: "Rest Day", icon: "🛏️", color: "#6b5a3e", target: 2400, suggestShake: "shake_standard",
 };
 
+// Saidur is on 16:8 IF (1 PM – 9 PM), so breakfast is normally outside
+// his eating window. We still ship a couple of options in case he breaks
+// fast on weekends; users on a normal eating schedule can edit/extend
+// these like any other preset.
+const SAIDUR_BREAKFAST_PRESETS = {
+  breakfast_eggs_milk: { key: "breakfast_eggs_milk", name: "Eggs + Milk", icon: "🍳",
+    items: [{ food: "egg", amount: 3 }, { food: "milk", amount: 200 }] },
+  breakfast_protein_shake: { key: "breakfast_protein_shake", name: "Quick Protein Shake", icon: "🥤", note: "Skip-the-cooking option",
+    items: [{ food: "milk", amount: 300 }, { food: "peanut", amount: 30 }, { food: "dates", amount: 30 }] },
+  breakfast_fruit_nuts: { key: "breakfast_fruit_nuts", name: "Fruit + Nuts", icon: "🍎",
+    items: [{ food: "fruit_mixed", amount: 250 }, { food: "cashew", amount: 30 }, { food: "milk", amount: 200 }] },
+};
+
 const SAIDUR_LUNCH_PRESETS = {
   lunch_chicken_thigh: { key: "lunch_chicken_thigh", name: "Chicken Thigh Bhuna + Rice", icon: "🍗",
     items: [{ food: "chicken_thigh", amount: 333 }, { food: "rice", amount: 200 }, { food: "egg", amount: 2 }, { food: "cucumber", amount: 200 }, { food: "bhuna_oil", amount: 2 }] },
@@ -149,7 +162,7 @@ export const SAIDUR_PROFILE = {
   windowStart: "13:00",
   windowEnd: "21:00",
   waterTarget: 8,
-  mealTimes: { lunch: "13:30", shake: "16:30", dinner: "19:30" },
+  mealTimes: { breakfast: "08:00", lunch: "13:30", shake: "16:30", dinner: "19:30" },
   workoutTime: "18:00",
   groceryBufferDays: 3,
   workoutAppUrl: "https://workout-cyan-tau.vercel.app/",
@@ -157,6 +170,7 @@ export const SAIDUR_PROFILE = {
   cheatBaselineKcal: 1019,
   stepAdjust: { lowThreshold: 8000, highThreshold: 12000, lowDelta: -100, highDelta: 100, baseline: 10000 },
   restDayType: SAIDUR_REST_DAY,
+  breakfastPresets: SAIDUR_BREAKFAST_PRESETS,
   lunchPresets: SAIDUR_LUNCH_PRESETS,
   shakePresets: SAIDUR_SHAKE_PRESETS,
   dinnerPresets: SAIDUR_DINNER_PRESETS,
@@ -184,7 +198,7 @@ export const BLANK_PROFILE = {
   windowStart: "",
   windowEnd: "",
   waterTarget: 8,
-  mealTimes: { lunch: "13:00", shake: "16:00", dinner: "19:00" },
+  mealTimes: { breakfast: "08:00", lunch: "13:00", shake: "16:00", dinner: "19:00" },
   workoutTime: "",
   groceryBufferDays: 3,
   workoutAppUrl: "",
@@ -192,6 +206,8 @@ export const BLANK_PROFILE = {
   cheatBaselineKcal: 1000,
   stepAdjust: { lowThreshold: 8000, highThreshold: 12000, lowDelta: -100, highDelta: 100, baseline: 10000 },
   restDayType: BLANK_REST_DAY,
+  breakfastPresets: { breakfast_simple: { key: "breakfast_simple", name: "Simple Breakfast", icon: "🍳",
+    items: [{ food: "egg", amount: 2 }, { food: "milk", amount: 200 }] } },
   lunchPresets: { lunch_simple: { key: "lunch_simple", name: "Simple Lunch", icon: "🍽️",
     items: [{ food: "chicken_breast", amount: 200 }, { food: "rice", amount: 150 }, { food: "cucumber", amount: 100 }] } },
   shakePresets: { shake_simple: { key: "shake_simple", name: "Simple Shake", icon: "🥤",

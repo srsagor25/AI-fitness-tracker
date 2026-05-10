@@ -139,6 +139,13 @@ export function Profile() {
               </Select>
             </div>
           </Field>
+          <Field label="Breakfast time">
+            <TextInput
+              type="time"
+              value={profile.mealTimes?.breakfast || ""}
+              onChange={(e) => update({ mealTimes: { ...(profile.mealTimes || {}), breakfast: e.target.value } })}
+            />
+          </Field>
           <Field label="Lunch time">
             <TextInput
               type="time"

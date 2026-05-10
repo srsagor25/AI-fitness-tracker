@@ -20,10 +20,11 @@ import {
 } from "lucide-react";
 
 const SLOTS = [
-  { id: "lunch", label: "Lunch", icon: "🍱" },
-  { id: "shake", label: "Shake", icon: "🥤" },
-  { id: "dinner", label: "Dinner", icon: "🍽️" },
-  { id: "snack", label: "Snack", icon: "🥜" },
+  { id: "breakfast", label: "Breakfast", icon: "🍳" },
+  { id: "lunch",     label: "Lunch",     icon: "🍱" },
+  { id: "shake",     label: "Shake",     icon: "🥤" },
+  { id: "dinner",    label: "Dinner",    icon: "🍽️" },
+  { id: "snack",     label: "Snack",     icon: "🥜" },
 ];
 
 export function Diet() {
@@ -227,18 +228,20 @@ export function Diet() {
       {/* Meal slots — primary action on this tab, placed above the secondary
           coffee/water trackers so the user lands on what they came to log. */}
       {SLOTS.map((slot) => {
-        const items = meals[slot.id];
+        const items = meals[slot.id] || [];
         const totalKcal = items.reduce((s, m) => s + calc(m.items).kcal, 0);
         const totalProtein = items.reduce((s, m) => s + calc(m.items).protein, 0);
 
         const presetMap =
-          slot.id === "lunch"
-            ? profile.lunchPresets
-            : slot.id === "shake"
-              ? profile.shakePresets
-              : slot.id === "dinner"
-                ? profile.dinnerPresets
-                : {};
+          slot.id === "breakfast"
+            ? profile.breakfastPresets || {}
+            : slot.id === "lunch"
+              ? profile.lunchPresets
+              : slot.id === "shake"
+                ? profile.shakePresets
+                : slot.id === "dinner"
+                  ? profile.dinnerPresets
+                  : {};
         const hasPresets = Object.keys(presetMap).length > 0;
         const suggestedShake = slot.id === "shake" && dayType?.suggestShake;
 

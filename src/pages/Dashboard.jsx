@@ -179,15 +179,16 @@ export function Dashboard({ setTab }) {
     // menu in the description ("No menu set" when nothing is planned). The
     // matching preset is attached to the reminder so the Take button on the
     // card can one-tap log it without opening the Diet tab.
-    const slotIcons = { lunch: "🍱", shake: "🥤", dinner: "🍽️" };
+    const slotIcons = { breakfast: "🍳", lunch: "🍱", shake: "🥤", dinner: "🍽️" };
     const slotMealTimes = profile.mealTimes || {};
     const presetsBySlot = {
+      breakfast: profile.breakfastPresets || {},
       lunch: profile.lunchPresets || {},
       shake: profile.shakePresets || {},
       dinner: profile.dinnerPresets || {},
     };
     const todaysPlan = (plan && plan[dateKey]) || {};
-    for (const slot of ["lunch", "shake", "dinner"]) {
+    for (const slot of ["breakfast", "lunch", "shake", "dinner"]) {
       const slotMeals = meals[slot] || [];
       const logged = slotMeals.length > 0;
       const t = timeToToday(slotMealTimes[slot]);
@@ -446,6 +447,7 @@ export function Dashboard({ setTab }) {
     profile.workoutTime,
     profile.mealTimes,
     profile.stepAdjust?.baseline,
+    profile.breakfastPresets,
     profile.lunchPresets,
     profile.shakePresets,
     profile.dinnerPresets,
