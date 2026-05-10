@@ -54,11 +54,13 @@ Set both in Vercel project → Settings → Environment Variables (or `.env.loca
 
 ### 4. Use it
 
-Open the app → **Profile** tab → top of the page is the **Account** card. Create an account with email + password (each user gets their own private slice of the `kv` table), then:
-- **Push all to my account** uploads every `aift:*` localStorage entry into Postgres under your user id.
-- **Pull from my account** overwrites local with your server snapshot (good for restoring on a fresh device).
+Open the app → **Profile** tab → top of the page is the **Account** card. Create an account with email + password (each user gets their own private slice of the `kv` table). After sign-in:
 
-The app keeps reading and writing localStorage normally between syncs — sync is always explicit, never automatic. Multiple users can share the same deployment safely; row-level scoping by `kv.user_id` keeps their data separate.
+- The local cache is wiped and rehydrated from your account in Postgres.
+- Every subsequent change (meals, workouts, weight, photos, …) auto-saves to your account in the background — debounced ~600 ms, batched into one `/api/kv/bulk` call. No buttons to press.
+- Sign in on another device with the same email/password to load the same data.
+
+Multiple users share the same deployment safely; rows are scoped by `kv.user_id`. Sign-out clears the local cache so the next account on the same browser starts fresh.
 
 Photos are stored as base64 in `kv.value` (jsonb). Postgres handles MB-scale rows fine, but if you accumulate hundreds of photos consider migrating that one key to object storage (S3 / R2 / Vercel Blob).
 
