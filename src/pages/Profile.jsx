@@ -2,6 +2,7 @@ import { useApp } from "../store/AppContext.jsx";
 import { Card, CardHeader, Stat } from "../components/ui/Card.jsx";
 import { Button } from "../components/ui/Button.jsx";
 import { Field, TextInput, Select, Chip } from "../components/ui/Field.jsx";
+import { CloudSyncCard } from "../components/CloudSyncCard.jsx";
 import { TEMPLATES } from "../store/profiles.js";
 import { BUILTIN_PROGRAMS } from "../store/defaults.js";
 import { bmr, tdee, dailyTarget, suggestedProtein } from "../lib/calories.js";
@@ -28,6 +29,8 @@ export function Profile() {
 
   return (
     <>
+      <CloudSyncCard />
+
       <Card>
         <CardHeader
           kicker="Profile Templates"

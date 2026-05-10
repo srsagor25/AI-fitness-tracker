@@ -21,6 +21,48 @@ Photo macros (`/api/analyze-photo`) and eat-out suggestions (`/api/suggest-eatou
 
 If both are set, OpenAI wins. Add the variable in Vercel project → Settings → Environment Variables → redeploy.
 
+## Cloud sync (Postgres) — optional
+
+Without this section the app runs purely on browser localStorage (per-device, ~5 MB cap). Configure these three env vars to add a personal Postgres backup with explicit Push / Pull buttons on the Profile tab.
+
+### 1. Provision a Postgres database
+
+Any provider that gives you a `postgres://…` URL works. Tested:
+- **Neon** (recommended — free tier, serverless): create a project at https://neon.tech, copy the connection string. Make sure it has `?sslmode=require` at the end.
+- **Vercel Postgres**: enable from your Vercel dashboard; it gives you `POSTGRES_URL` automatically — copy it as `DATABASE_URL`.
+- **Supabase**: project → Settings → Database → Connection string (URI mode).
+- **Self-hosted**: any reachable Postgres 13+; just add `?sslmode=disable` to the URL if it's not behind TLS.
+
+### 2. Apply the schema
+
+The schema is one file, [`db/schema.sql`](db/schema.sql). Run it once against your database:
+
+```bash
+psql "$DATABASE_URL" -f db/schema.sql
+```
+
+It creates a single table `kv (key text primary key, value jsonb, updated_at timestamptz)` plus a touch trigger.
+
+### 3. Set Vercel env vars
+
+| Variable | Purpose |
+|---|---|
+| `DATABASE_URL` | The Postgres connection string from step 1 |
+| `SESSION_SECRET` | Random 32-byte hex used to sign session cookies. Generate with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
+| `APP_PASSWORD` | The single shared password used to log into the cloud sync card |
+
+Set all three in Vercel project → Settings → Environment Variables (or `.env.local` for local dev), then redeploy.
+
+### 4. Use it
+
+Open the app → **Profile** tab → top of the page is the **Cloud sync** card. Sign in with `APP_PASSWORD`, then:
+- **Push all to server** uploads every `aift:*` localStorage entry into the `kv` table.
+- **Pull from server** overwrites local with the server snapshot (good for restoring on a fresh device).
+
+The app keeps reading and writing localStorage normally between syncs — sync is always explicit, never automatic. Photos are stored as base64 in `kv.value` (jsonb); Postgres handles MB-scale rows fine, but if you accumulate hundreds of photos consider migrating that one key to object storage.
+
+This is single-user "personal cloud" auth. To support multiple accounts, replace `api/_auth.js` with a proper provider (Clerk, NextAuth, Supabase Auth) and add a `user_id` column to `kv`.
+
 ## Run
 
 ```bash
