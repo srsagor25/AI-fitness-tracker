@@ -106,13 +106,38 @@ export function Profile() {
               onChange={(e) => update({ windowEnd: e.target.value })}
             />
           </Field>
-          <Field label="Water target (cups/day)">
-            <TextInput
-              type="number"
-              min="0"
-              value={profile.waterTarget ?? 8}
-              onChange={(e) => update({ waterTarget: Number(e.target.value) || 0 })}
-            />
+          <Field
+            label="Water target (per day)"
+            hint="Pick whichever unit is easier to track. The Today tab shows progress in this unit."
+          >
+            <div className="flex gap-2">
+              <TextInput
+                type="number"
+                min="0"
+                step={profile.waterUnit === "ml" ? 100 : 1}
+                value={profile.waterTarget ?? 8}
+                onChange={(e) => update({ waterTarget: Number(e.target.value) || 0 })}
+              />
+              <Select
+                value={profile.waterUnit || "cups"}
+                onChange={(e) => {
+                  // When switching units, convert the existing target so
+                  // the displayed number stays meaningful (8 cups ≈ 2000 ml).
+                  const next = e.target.value;
+                  const cur = profile.waterUnit || "cups";
+                  if (cur !== next) {
+                    const ml = cur === "cups" ? (profile.waterTarget ?? 8) * 240 : (profile.waterTarget ?? 0);
+                    const newTarget = next === "cups" ? Math.round(ml / 240) : Math.round(ml / 50) * 50;
+                    update({ waterUnit: next, waterTarget: newTarget });
+                  } else {
+                    update({ waterUnit: next });
+                  }
+                }}
+              >
+                <option value="cups">cups</option>
+                <option value="ml">ml</option>
+              </Select>
+            </div>
           </Field>
           <Field label="Lunch time">
             <TextInput
@@ -210,14 +235,15 @@ export function Profile() {
               <option value="muscle_build">Muscle build (+400 kcal · higher protein)</option>
             </Select>
           </Field>
-          <Field label="Protein target (g/day)">
-            <TextInput type="number" value={profile.proteinTarget} onChange={(e) => update({ proteinTarget: Number(e.target.value) || 0 })} />
-          </Field>
-          <Field label="Cheat baseline (kcal)">
-            <TextInput type="number" value={profile.cheatBaselineKcal} onChange={(e) => update({ cheatBaselineKcal: Number(e.target.value) || 0 })} />
-          </Field>
-          <Field label="Workout app URL">
-            <TextInput value={profile.workoutAppUrl || ""} onChange={(e) => update({ workoutAppUrl: e.target.value })} placeholder="https://..." />
+          <Field
+            label="Protein target (g/day)"
+            hint="Bumped automatically when you switch goals (cut → 2.2 g/kg, maintain → 1.6 g/kg). Override here if your plan needs a specific number."
+          >
+            <TextInput
+              type="number"
+              value={profile.proteinTarget}
+              onChange={(e) => update({ proteinTarget: Number(e.target.value) || 0 })}
+            />
           </Field>
         </div>
       </Card>
@@ -251,7 +277,7 @@ export function Profile() {
       />
 
 
-      <DayTypesCard profile={profile} dayTypes={dayTypes} update={update} />
+      <DayTypesCard dayTypes={dayTypes} />
 
       {profile.fastFoodTips && profile.fastFoodTips.length > 0 && (
         <Card>
@@ -394,34 +420,19 @@ function GoalSuggestion({ profile, activeProgramId, setActiveProgramId, customPr
 }
 
 // Day types are just Rest and Workout. Workout = rest + 300 kcal, with the
-// surplus expected to come from an extra shake/snack. Sports/steps already
-// feed kcal independently via the Activity tab, so we don't need extras.
-function DayTypesCard({ profile, dayTypes, update }) {
-  const rest = dayTypes.find((d) => d.id === "rest") || { target: 2200 };
-  const workout = dayTypes.find((d) => d.id === "workout") || { target: rest.target + 300 };
-
-  function setRestTarget(v) {
-    const t = Math.max(1200, Math.round(Number(v) || 0));
-    update({
-      restDayType: {
-        ...(profile.restDayType || {}),
-        id: "rest",
-        label: "Rest Day",
-        icon: "🛏️",
-        color: "#6b5a3e",
-        target: t,
-      },
-    });
-  }
-
+// surplus expected to come from an extra shake/snack. The rest target is
+// auto-derived from the user's goal/TDEE (BMR × activity ± cut/bulk
+// delta) — they don't enter it directly. Sports/steps add on top
+// automatically.
+function DayTypesCard({ dayTypes }) {
   return (
     <Card>
       <CardHeader
         kicker="Day Types"
         title="Rest vs Workout target"
-        subtitle="Workout day eats 300 kcal more than rest — covered by an extra shake/snack. Sports & steps add kcal on top automatically."
+        subtitle="Targets are auto-calculated from your stats and goal direction. Update those fields above and these numbers follow."
       />
-      <ul className="divide-y divide-ink/30 border-y border-ink/30 mb-4">
+      <ul className="divide-y divide-ink/30 border-y border-ink/30">
         {dayTypes.map((dt) => (
           <li key={dt.id} className="py-2 flex items-center gap-3">
             <span className="text-2xl shrink-0">{dt.icon}</span>
@@ -436,14 +447,6 @@ function DayTypesCard({ profile, dayTypes, update }) {
           </li>
         ))}
       </ul>
-
-      <Field label="Rest-day kcal target" hint={`Workout day will be ${rest.target + 300} kcal.`}>
-        <TextInput
-          type="number"
-          value={rest.target}
-          onChange={(e) => setRestTarget(e.target.value)}
-        />
-      </Field>
     </Card>
   );
 }

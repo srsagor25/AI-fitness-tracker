@@ -1,16 +1,9 @@
 import { withAuth } from "../_auth.js";
 import { withClient } from "../_db.js";
 
-// Bulk push/pull endpoint.
-//
-// POST /api/kv/bulk { items: [{ key, value }, ...] }
-//   → upserts every row inside one transaction. Returns { ok, count }.
-//   Used by the "Push all" button in the Profile sync card so a fresh
-//   account can be hydrated in one round-trip.
-//
-// The matching pull is `GET /api/kv/list?prefix=&withValues=1` — already
-// covered by list.js so we don't duplicate it here.
-export default withAuth(async (req, res) => {
+// POST /api/kv/bulk { items: [{ key, value }] } → upsert per-user, all
+// inside one transaction so partial failures don't corrupt the snapshot.
+export default withAuth(async (req, res, session) => {
   if (req.method !== "POST") {
     res.status(405).json({ error: "Method not allowed" });
     return;
@@ -21,7 +14,6 @@ export default withAuth(async (req, res) => {
     res.status(400).json({ error: "Expected { items: [{key, value}] }" });
     return;
   }
-  // Reject anything obviously malformed before we open a transaction.
   for (const it of items) {
     if (!it || typeof it.key !== "string" || it.value === undefined) {
       res.status(400).json({ error: "Each item needs string key + value" });
@@ -35,9 +27,9 @@ export default withAuth(async (req, res) => {
       try {
         for (const it of items) {
           await client.query(
-            `insert into kv (key, value) values ($1, $2)
-               on conflict (key) do update set value = excluded.value`,
-            [it.key, JSON.stringify(it.value)],
+            `insert into kv (user_id, key, value) values ($1, $2, $3)
+               on conflict (user_id, key) do update set value = excluded.value`,
+            [session.uid, it.key, JSON.stringify(it.value)],
           );
         }
         await client.query("commit");

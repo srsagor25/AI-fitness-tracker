@@ -38,10 +38,17 @@ export async function authStatus() {
   }
 }
 
-export async function login(password) {
+export async function login(email, password) {
   return jfetch("/api/auth/login", {
     method: "POST",
-    body: JSON.stringify({ password }),
+    body: JSON.stringify({ email, password }),
+  });
+}
+
+export async function register(email, password) {
+  return jfetch("/api/auth/register", {
+    method: "POST",
+    body: JSON.stringify({ email, password }),
   });
 }
 

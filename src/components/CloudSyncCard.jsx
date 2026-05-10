@@ -5,26 +5,35 @@ import { Field, TextInput, Chip } from "./ui/Field.jsx";
 import {
   authStatus,
   login,
+  register,
   logout,
   pushAll,
   pullAll,
 } from "../lib/sync.js";
-import { Cloud, CloudOff, ArrowUpToLine, ArrowDownToLine, AlertTriangle } from "lucide-react";
+import {
+  Cloud,
+  CloudOff,
+  ArrowUpToLine,
+  ArrowDownToLine,
+  AlertTriangle,
+  Mail,
+} from "lucide-react";
 
-// Personal-cloud sync UI. Lives on the Profile page. Three states:
-//  1. server not configured (no API or no env vars) → show setup hint
-//  2. authed = false → password prompt
-//  3. authed = true → push/pull buttons + logout
+// Account + cloud-sync UI on Profile. Two phases:
+//   1. signed out → tabs for "Sign in" / "Create account"
+//   2. signed in  → email shown, Push / Pull / Sign out buttons
 //
-// Keep this card tightly scoped: every other surface in the app keeps
-// reading from localStorage. Sync is always explicit — Push to upload,
-// Pull to overwrite local with the server snapshot.
+// Each user has their own data in Postgres (kv.user_id), so two accounts
+// on the same deployment never see each other's history. Sync is always
+// explicit — Push to upload, Pull to overwrite local.
 
 export function CloudSyncCard() {
-  const [status, setStatus] = useState({ authed: false, configured: true, loaded: false });
+  const [status, setStatus] = useState({ authed: false, configured: true, loaded: false, email: null });
+  const [mode, setMode] = useState("signin"); // "signin" | "register"
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [busy, setBusy] = useState(null); // "login" | "logout" | "push" | "pull"
-  const [msg, setMsg] = useState(null);   // last action result text
+  const [busy, setBusy] = useState(null);
+  const [msg, setMsg] = useState(null);
   const [err, setErr] = useState(null);
 
   async function refresh() {
@@ -36,17 +45,22 @@ export function CloudSyncCard() {
     refresh();
   }, []);
 
-  async function doLogin(e) {
+  async function doSignin(e) {
     e.preventDefault?.();
     setErr(null);
-    setBusy("login");
+    setBusy("auth");
     try {
-      await login(password);
+      if (mode === "register") {
+        await register(email.trim(), password);
+        setMsg("Account created — you're signed in.");
+      } else {
+        await login(email.trim(), password);
+        setMsg("Signed in.");
+      }
       setPassword("");
-      setMsg("Logged in.");
       await refresh();
     } catch (e2) {
-      setErr(e2.message || "Login failed");
+      setErr(e2.message || "Authentication failed");
     } finally {
       setBusy(null);
     }
@@ -57,17 +71,17 @@ export function CloudSyncCard() {
     setErr(null);
     try {
       await logout();
-      setMsg("Logged out.");
+      setMsg("Signed out.");
       await refresh();
     } catch (e2) {
-      setErr(e2.message || "Logout failed");
+      setErr(e2.message || "Sign out failed");
     } finally {
       setBusy(null);
     }
   }
 
   async function doPush() {
-    if (!confirm("Upload all local data to the server, overwriting anything stored there with the same key?")) return;
+    if (!confirm("Upload all local data to your account, overwriting anything stored there with the same key?")) return;
     setErr(null);
     setBusy("push");
     try {
@@ -81,7 +95,7 @@ export function CloudSyncCard() {
   }
 
   async function doPull() {
-    if (!confirm("Replace local data with the server snapshot? Anything you've changed locally that isn't on the server will be lost.")) return;
+    if (!confirm("Replace local data with your account's snapshot? Anything you've changed locally that isn't on the server will be lost.")) return;
     setErr(null);
     setBusy("pull");
     try {
@@ -99,7 +113,7 @@ export function CloudSyncCard() {
   if (!status.loaded) {
     return (
       <Card>
-        <CardHeader kicker="Cloud sync" title="Loading…" />
+        <CardHeader kicker="Account" title="Loading…" />
       </Card>
     );
   }
@@ -108,9 +122,9 @@ export function CloudSyncCard() {
     return (
       <Card>
         <CardHeader
-          kicker="Cloud sync"
-          title="Not configured"
-          subtitle="Set DATABASE_URL, SESSION_SECRET, and APP_PASSWORD in your Vercel project to enable Postgres sync."
+          kicker="Account"
+          title="Cloud sync not configured"
+          subtitle="Set DATABASE_URL and SESSION_SECRET in your Vercel project to enable accounts."
         />
         <div className="border-2 border-ink p-3 flex items-start gap-2 bg-ink/5">
           <AlertTriangle size={16} className="text-accent shrink-0 mt-0.5" />
@@ -125,9 +139,13 @@ export function CloudSyncCard() {
   return (
     <Card>
       <CardHeader
-        kicker="Cloud sync"
-        title="Personal Postgres backup"
-        subtitle="Local data is the source of truth. Push to back up; Pull to restore on a new device."
+        kicker="Account"
+        title={status.authed ? `Signed in as ${status.email || "—"}` : "Sign in to sync"}
+        subtitle={
+          status.authed
+            ? "Your data is private to your account. Push to upload; Pull to restore on a new device."
+            : "Each account has its own private data. Local-only mode keeps working until you sign in."
+        }
         right={
           status.authed ? (
             <Chip color="#4a6b3e">
@@ -142,27 +160,73 @@ export function CloudSyncCard() {
       />
 
       {!status.authed ? (
-        <form onSubmit={doLogin} className="space-y-3">
-          <Field label="App password" hint="Set on the server as APP_PASSWORD.">
-            <TextInput
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
-              placeholder="••••••••"
-            />
-          </Field>
-          <Button type="submit" variant="primary" disabled={busy === "login" || !password}>
-            {busy === "login" ? "Signing in…" : "Sign in"}
-          </Button>
-        </form>
+        <>
+          <div className="flex gap-2 mb-3">
+            {[
+              { id: "signin", label: "Sign in" },
+              { id: "register", label: "Create account" },
+            ].map((t) => (
+              <button
+                key={t.id}
+                onClick={() => {
+                  setMode(t.id);
+                  setErr(null);
+                }}
+                className={`px-3 py-1.5 border-2 font-mono text-[10px] uppercase tracking-[0.2em] ${
+                  mode === t.id
+                    ? "bg-ink text-paper border-ink"
+                    : "border-ink hover:bg-ink hover:text-paper"
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <form onSubmit={doSignin} className="space-y-3">
+            <Field label="Email">
+              <TextInput
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoComplete="email"
+                placeholder="you@example.com"
+              />
+            </Field>
+            <Field
+              label="Password"
+              hint={mode === "register" ? "At least 8 characters." : undefined}
+            >
+              <TextInput
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete={mode === "register" ? "new-password" : "current-password"}
+                placeholder="••••••••"
+              />
+            </Field>
+            <Button
+              type="submit"
+              variant="primary"
+              disabled={busy === "auth" || !email || !password}
+            >
+              <Mail size={14} />{" "}
+              {busy === "auth"
+                ? mode === "register"
+                  ? "Creating account…"
+                  : "Signing in…"
+                : mode === "register"
+                  ? "Create account"
+                  : "Sign in"}
+            </Button>
+          </form>
+        </>
       ) : (
         <div className="flex flex-wrap gap-2">
           <Button variant="primary" onClick={doPush} disabled={busy === "push"}>
-            <ArrowUpToLine size={14} /> {busy === "push" ? "Pushing…" : "Push all to server"}
+            <ArrowUpToLine size={14} /> {busy === "push" ? "Pushing…" : "Push all to my account"}
           </Button>
           <Button variant="outline" onClick={doPull} disabled={busy === "pull"}>
-            <ArrowDownToLine size={14} /> {busy === "pull" ? "Pulling…" : "Pull from server"}
+            <ArrowDownToLine size={14} /> {busy === "pull" ? "Pulling…" : "Pull from my account"}
           </Button>
           <Button variant="ghost" onClick={doLogout} disabled={busy === "logout"}>
             {busy === "logout" ? "Signing out…" : "Sign out"}

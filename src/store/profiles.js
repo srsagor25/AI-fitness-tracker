@@ -225,19 +225,30 @@ export function cloneTemplate(template) {
 // snack. Sports/steps still feed kcal independently via the Activity tab.
 export const WORKOUT_DAY_BONUS_KCAL = 300;
 
-// Build the day-type chip list. Always exactly two entries: Rest (from
-// profile.restDayType) and Workout (rest target + WORKOUT_DAY_BONUS_KCAL).
-// activeProgram is accepted for API symmetry but no longer affects targets.
-export function composeDayTypes(_activeProgram, profile = {}) {
-  const rest =
-    profile.restDayType ||
-    { id: "rest", label: "Rest Day", icon: "🛏️", color: "#6b5a3e", target: 2200, suggestShake: null };
+// Build the day-type chip list. Always exactly two entries: Rest and
+// Workout (rest + WORKOUT_DAY_BONUS_KCAL).
+//
+// `restTargetKcal` is computed by the caller (AppContext) from the user's
+// goal/TDEE — we don't ask the user to type it in. We still honor a
+// stored profile.restDayType.target if one exists so older saves keep
+// working, but new accounts derive it automatically.
+export function composeDayTypes(_activeProgram, profile = {}, restTargetKcal) {
+  const storedTarget = profile.restDayType?.target;
+  const target = Number(restTargetKcal) || Number(storedTarget) || 2200;
+  const rest = {
+    id: "rest",
+    label: "Rest Day",
+    icon: "🛏️",
+    color: "#6b5a3e",
+    target,
+    suggestShake: null,
+  };
   const workout = {
     id: "workout",
     label: "Workout Day",
     icon: "💪",
     color: "#c44827",
-    target: (Number(rest.target) || 2200) + WORKOUT_DAY_BONUS_KCAL,
+    target: target + WORKOUT_DAY_BONUS_KCAL,
     suggestShake: "shake_power",
   };
   return [rest, workout];

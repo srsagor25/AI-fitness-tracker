@@ -1033,7 +1033,17 @@ export function Dashboard({ setTab }) {
         <CardHeader kicker="Healthy Habits" title="Daily Tracking" />
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <HabitTile icon={Coffee} label="Coffee" value={coffeeHad} suffix={profile.coffeeSchedule.length ? `/ ${profile.coffeeSchedule.length}` : "cups"} />
-          <HabitTile icon={Droplet} label="Water" value={waterCups.toFixed(1)} suffix={`/ ${profile.waterTarget || 8} cups`} accent="#3b6aa3" />
+          <HabitTile
+            icon={Droplet}
+            label="Water"
+            value={
+              (profile.waterUnit || "cups") === "ml"
+                ? Math.round(waterCups * 240).toString()
+                : waterCups.toFixed(1)
+            }
+            suffix={`/ ${profile.waterTarget || ((profile.waterUnit || "cups") === "ml" ? 2000 : 8)} ${profile.waterUnit || "cups"}`}
+            accent="#3b6aa3"
+          />
           <HabitTile icon={Footprints} label="Steps" value={steps.toLocaleString()} suffix="" />
           <HabitTile
             icon={Clock}

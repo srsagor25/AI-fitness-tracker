@@ -1,19 +1,29 @@
--- AI Fitness Tracker · Postgres schema
+-- AI Fitness Tracker · Postgres schema (multi-user)
 --
--- Single-user "personal cloud" model: one app instance = one account,
--- gated by APP_PASSWORD. Every piece of state the app already keeps in
--- localStorage maps to a single row in `kv` (key text, value jsonb), so
--- the migration from localStorage is a JSON copy with no schema work.
--- See README → "Cloud sync" for setup steps.
+-- Each user has their own account (email + password). Every kv row is
+-- scoped to a user_id so two accounts on the same DB never see each
+-- other's data. See README → Cloud sync for setup.
 
-create table if not exists kv (
-  key        text primary key,
-  value      jsonb not null,
-  updated_at timestamptz not null default now()
+create extension if not exists pgcrypto; -- for gen_random_uuid()
+
+create table if not exists users (
+  id            uuid primary key default gen_random_uuid(),
+  email         text unique not null,
+  password_hash text not null,
+  created_at    timestamptz not null default now()
 );
 
--- Trigger so updated_at stays accurate on every UPDATE without the API
--- having to set it explicitly.
+-- KV store, scoped per user. Keys are the same aift:* names already in
+-- use by the localStorage layer, so the migration is a JSON copy.
+create table if not exists kv (
+  user_id    uuid not null references users(id) on delete cascade,
+  key        text not null,
+  value      jsonb not null,
+  updated_at timestamptz not null default now(),
+  primary key (user_id, key)
+);
+
+-- Touch trigger so updated_at is correct on every UPDATE.
 create or replace function kv_touch_updated_at()
 returns trigger language plpgsql as $$
 begin
@@ -26,7 +36,3 @@ drop trigger if exists kv_touch_updated_at on kv;
 create trigger kv_touch_updated_at
   before update on kv
   for each row execute function kv_touch_updated_at();
-
--- Prefix scans (e.g. "meals:%") use the primary key index automatically
--- because text PK + LIKE 'prefix%' is range-compatible. No extra index
--- needed.

@@ -310,7 +310,14 @@ export function AppProvider({ children }) {
   }, [activeProgram, weeks]);
 
   // ----- Day types (always exactly Rest + Workout) -----
-  const dayTypes = useMemo(() => composeDayTypes(activeProgram, profile), [activeProgram, profile]);
+  // Rest-day target is derived from the user's goal-aware daily target
+  // (Mifflin BMR × activity ± cut/bulk). Replaces the manual editor that
+  // used to live on Profile — a kcal number isn't something most users
+  // should be tuning by hand.
+  const dayTypes = useMemo(
+    () => composeDayTypes(activeProgram, profile, dailyTarget(profile)),
+    [activeProgram, profile],
+  );
 
   // Today's scheduled program day determines the auto-default. We need this
   // before dayType resolves, so compute todaysDayId here even though the
@@ -380,13 +387,28 @@ export function AppProvider({ children }) {
     return out;
   }, [meals, cheats, customFoods]);
 
+  // Cheat baseline = the kcal a "normal meal" would have hit. Auto-derived
+  // as one third of the user's goal-aware daily target (Mifflin-StJeor BMR
+  // × activity, then ±cut/bulk delta). This used to be a profile field but
+  // the user shouldn't have to think about a number that's already implied
+  // by their other settings. cheatBaselineKcal still wins if it's set on
+  // the profile (legacy data).
+  const autoCheatBaseline = useMemo(() => {
+    const t = dailyTarget(profile);
+    if (!t) return 1000;
+    return Math.max(400, Math.round(t / 3));
+  }, [profile]);
+
+  // Effective cheat baseline used by every consumer — keeps Cheat.jsx and
+  // cheatSurplus in sync no matter which path supplies the number.
+  const cheatBaselineKcal = profile.cheatBaselineKcal || autoCheatBaseline;
+
   const cheatSurplus = useMemo(() => {
-    const baseline = profile.cheatBaselineKcal || 1000;
     return cheats.reduce(
-      (s, c) => s + Math.max(0, calcMeal(c.items, customFoods).kcal - baseline),
+      (s, c) => s + Math.max(0, calcMeal(c.items, customFoods).kcal - cheatBaselineKcal),
       0,
     );
-  }, [cheats, profile.cheatBaselineKcal, customFoods]);
+  }, [cheats, cheatBaselineKcal, customFoods]);
 
   // ----- Streak: count back from today, day counts if total kcal > 100 -----
   const streak = useMemo(() => {
@@ -1167,7 +1189,7 @@ export function AppProvider({ children }) {
     // day data
     dateKey,
     meals, addMealToSlot, removeMealFromSlot,
-    cheats, addCheat, removeCheat, cheatSurplus,
+    cheats, addCheat, removeCheat, cheatSurplus, cheatBaselineKcal,
     coffeeLog, addCoffeeEntry, removeCoffeeEntry, toggleCoffeeSchedule,
     steps, setSteps, stepAdjustKcal,
     waterLog, addWaterEntry, removeWaterEntry,

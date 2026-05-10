@@ -1,8 +1,8 @@
 import { withAuth } from "../_auth.js";
 import { query } from "../_db.js";
 
-// POST /api/kv/put { key, value } → { ok: true, updated_at }
-export default withAuth(async (req, res) => {
+// POST /api/kv/put { key, value } → upsert per-user.
+export default withAuth(async (req, res, session) => {
   if (req.method !== "POST") {
     res.status(405).json({ error: "Method not allowed" });
     return;
@@ -19,10 +19,10 @@ export default withAuth(async (req, res) => {
   }
   try {
     const r = await query(
-      `insert into kv (key, value) values ($1, $2)
-         on conflict (key) do update set value = excluded.value
+      `insert into kv (user_id, key, value) values ($1, $2, $3)
+         on conflict (user_id, key) do update set value = excluded.value
          returning updated_at`,
-      [key, JSON.stringify(value)],
+      [session.uid, key, JSON.stringify(value)],
     );
     res.status(200).json({ ok: true, updated_at: r.rows[0].updated_at });
   } catch (e) {

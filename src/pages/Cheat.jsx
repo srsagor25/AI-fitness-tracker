@@ -24,6 +24,7 @@ export function Cheat() {
     addCheat,
     removeCheat,
     cheatSurplus,
+    cheatBaselineKcal,
     dailyTargetKcal,
     calc,
   } = useApp();
@@ -46,7 +47,7 @@ export function Cheat() {
     setPicker(null);
   }
 
-  const baseline = profile.cheatBaselineKcal || 1000;
+  const baseline = cheatBaselineKcal;
 
   return (
     <>

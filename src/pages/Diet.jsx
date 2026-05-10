@@ -938,8 +938,12 @@ function WaterTracker({ profile, log, onAdd, onRemove }) {
   const [time, setTime] = useState("");
   const [showAdd, setShowAdd] = useState(false);
 
-  const target = profile.waterTarget || 8;
+  const targetUnit = profile.waterUnit || "cups";
+  const target = profile.waterTarget || (targetUnit === "ml" ? 2000 : 8);
   const totalCups = totalWaterCups(log);
+  // Display total in the target's unit so "/ 2000 ml" stays comparable.
+  const totalDisplay =
+    targetUnit === "ml" ? Math.round(totalCups * 240) : totalCups.toFixed(1);
 
   function quickAdd(amount, u) {
     onAdd({ qty: amount, unit: u });
@@ -956,7 +960,7 @@ function WaterTracker({ profile, log, onAdd, onRemove }) {
     <Card>
       <CardHeader
         kicker="Hydration"
-        title={`${totalCups.toFixed(1)} / ${target} cups`}
+        title={`${totalDisplay} / ${target} ${targetUnit}`}
         subtitle={
           totalCups >= target
             ? "Hydration goal hit — nice."

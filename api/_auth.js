@@ -1,18 +1,23 @@
-// Cookie-based auth for the personal cloud. Single-user model: one shared
-// password (APP_PASSWORD env var) gates the whole DB. After a successful
-// login we issue an HMAC-signed session cookie so subsequent /api/kv/*
-// calls don't have to send the password again.
+// Multi-user auth. Each user has email + password (hashed with scrypt).
+// On login we issue an HMAC-signed session cookie holding { uid, email }.
 //
-// SESSION_SECRET signs the cookie. Generate one once with:
+// SESSION_SECRET signs the cookie. Generate one with:
 //   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 //
-// This is intentionally minimal — multi-user accounts, OAuth, etc. would
-// replace this module entirely. See README → Cloud sync.
+// Password hashing uses Node's built-in crypto.scrypt — no native
+// dependencies. Hash format: "scrypt$N$r$p$saltB64$hashB64".
 
 import crypto from "crypto";
+import { query } from "./_db.js";
 
 const COOKIE_NAME = "aift_session";
 const SESSION_TTL_MS = 30 * 86400_000; // 30 days
+const SCRYPT_N = 16384;
+const SCRYPT_R = 8;
+const SCRYPT_P = 1;
+const SCRYPT_KEYLEN = 64;
+
+// ---------- session cookie helpers ----------
 
 function getSecret() {
   const s = process.env.SESSION_SECRET;
@@ -52,7 +57,6 @@ function verify(token) {
   const expected = b64urlEncode(
     crypto.createHmac("sha256", secret).update(body).digest(),
   );
-  // constant-time compare
   if (
     sig.length !== expected.length ||
     !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))
@@ -68,8 +72,8 @@ function verify(token) {
   }
 }
 
-export function setSessionCookie(res) {
-  const token = sign({ ok: true, exp: Date.now() + SESSION_TTL_MS });
+export function setSessionCookie(res, { uid, email }) {
+  const token = sign({ uid, email, exp: Date.now() + SESSION_TTL_MS });
   const parts = [
     `${COOKIE_NAME}=${token}`,
     "HttpOnly",
@@ -95,12 +99,12 @@ export function getSession(req) {
   return verify(m[1]);
 }
 
-// Wrap a handler so it 401s when no valid session is present. Used by all
-// /api/kv/* routes.
+// Wrap a handler so it 401s when no valid session is present. The
+// handler receives a third argument `session = { uid, email, exp }`.
 export function withAuth(handler) {
   return async (req, res) => {
     const sess = getSession(req);
-    if (!sess) {
+    if (!sess?.uid) {
       res.status(401).json({ error: "Unauthorized" });
       return;
     }
@@ -108,15 +112,80 @@ export function withAuth(handler) {
   };
 }
 
-export function checkPassword(input) {
-  const expected = process.env.APP_PASSWORD || "";
-  if (!expected) {
-    throw new Error("APP_PASSWORD is not set — see README → Cloud sync.");
+// ---------- password hashing ----------
+
+function scryptHash(password, salt) {
+  return new Promise((resolve, reject) => {
+    crypto.scrypt(
+      password,
+      salt,
+      SCRYPT_KEYLEN,
+      { N: SCRYPT_N, r: SCRYPT_R, p: SCRYPT_P },
+      (err, key) => (err ? reject(err) : resolve(key)),
+    );
+  });
+}
+
+export async function hashPassword(password) {
+  if (typeof password !== "string" || password.length < 8) {
+    throw new Error("Password must be at least 8 characters.");
   }
-  if (typeof input !== "string" || input.length === 0) return false;
-  // Constant-time compare so an attacker can't time-leak the prefix.
-  const a = Buffer.from(input);
-  const b = Buffer.from(expected);
-  if (a.length !== b.length) return false;
-  return crypto.timingSafeEqual(a, b);
+  const salt = crypto.randomBytes(16);
+  const key = await scryptHash(password, salt);
+  return [
+    "scrypt",
+    SCRYPT_N,
+    SCRYPT_R,
+    SCRYPT_P,
+    salt.toString("base64"),
+    key.toString("base64"),
+  ].join("$");
+}
+
+export async function verifyPassword(password, stored) {
+  if (typeof stored !== "string" || !stored.startsWith("scrypt$")) return false;
+  const [, n, r, p, saltB64, hashB64] = stored.split("$");
+  const salt = Buffer.from(saltB64, "base64");
+  const expected = Buffer.from(hashB64, "base64");
+  const derived = await new Promise((resolve, reject) => {
+    crypto.scrypt(
+      password,
+      salt,
+      expected.length,
+      { N: +n, r: +r, p: +p },
+      (err, key) => (err ? reject(err) : resolve(key)),
+    );
+  });
+  if (derived.length !== expected.length) return false;
+  return crypto.timingSafeEqual(derived, expected);
+}
+
+// ---------- user lookups ----------
+
+function normalizeEmail(email) {
+  if (typeof email !== "string") return "";
+  return email.trim().toLowerCase();
+}
+
+export async function findUserByEmail(email) {
+  const e = normalizeEmail(email);
+  if (!e) return null;
+  const r = await query(
+    `select id, email, password_hash from users where email = $1`,
+    [e],
+  );
+  return r.rows[0] || null;
+}
+
+export async function createUser(email, password) {
+  const e = normalizeEmail(email);
+  if (!e || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) {
+    throw new Error("Enter a valid email address.");
+  }
+  const hash = await hashPassword(password);
+  const r = await query(
+    `insert into users (email, password_hash) values ($1, $2) returning id, email`,
+    [e, hash],
+  );
+  return r.rows[0];
 }

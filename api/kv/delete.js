@@ -1,8 +1,8 @@
 import { withAuth } from "../_auth.js";
 import { query } from "../_db.js";
 
-// POST /api/kv/delete { key } → { ok: true, deleted: <count> }
-export default withAuth(async (req, res) => {
+// POST /api/kv/delete { key } → delete one per-user row.
+export default withAuth(async (req, res, session) => {
   if (req.method !== "POST") {
     res.status(405).json({ error: "Method not allowed" });
     return;
@@ -14,7 +14,10 @@ export default withAuth(async (req, res) => {
     return;
   }
   try {
-    const r = await query(`delete from kv where key = $1`, [key]);
+    const r = await query(
+      `delete from kv where user_id = $1 and key = $2`,
+      [session.uid, key],
+    );
     res.status(200).json({ ok: true, deleted: r.rowCount });
   } catch (e) {
     res.status(500).json({ error: e.message || String(e) });

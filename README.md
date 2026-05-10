@@ -49,19 +49,18 @@ It creates a single table `kv (key text primary key, value jsonb, updated_at tim
 |---|---|
 | `DATABASE_URL` | The Postgres connection string from step 1 |
 | `SESSION_SECRET` | Random 32-byte hex used to sign session cookies. Generate with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
-| `APP_PASSWORD` | The single shared password used to log into the cloud sync card |
 
-Set all three in Vercel project → Settings → Environment Variables (or `.env.local` for local dev), then redeploy.
+Set both in Vercel project → Settings → Environment Variables (or `.env.local` for local dev), then redeploy.
 
 ### 4. Use it
 
-Open the app → **Profile** tab → top of the page is the **Cloud sync** card. Sign in with `APP_PASSWORD`, then:
-- **Push all to server** uploads every `aift:*` localStorage entry into the `kv` table.
-- **Pull from server** overwrites local with the server snapshot (good for restoring on a fresh device).
+Open the app → **Profile** tab → top of the page is the **Account** card. Create an account with email + password (each user gets their own private slice of the `kv` table), then:
+- **Push all to my account** uploads every `aift:*` localStorage entry into Postgres under your user id.
+- **Pull from my account** overwrites local with your server snapshot (good for restoring on a fresh device).
 
-The app keeps reading and writing localStorage normally between syncs — sync is always explicit, never automatic. Photos are stored as base64 in `kv.value` (jsonb); Postgres handles MB-scale rows fine, but if you accumulate hundreds of photos consider migrating that one key to object storage.
+The app keeps reading and writing localStorage normally between syncs — sync is always explicit, never automatic. Multiple users can share the same deployment safely; row-level scoping by `kv.user_id` keeps their data separate.
 
-This is single-user "personal cloud" auth. To support multiple accounts, replace `api/_auth.js` with a proper provider (Clerk, NextAuth, Supabase Auth) and add a `user_id` column to `kv`.
+Photos are stored as base64 in `kv.value` (jsonb). Postgres handles MB-scale rows fine, but if you accumulate hundreds of photos consider migrating that one key to object storage (S3 / R2 / Vercel Blob).
 
 ## Run
 
