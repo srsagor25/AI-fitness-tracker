@@ -832,6 +832,9 @@ export function Dashboard({ setTab }) {
           dayType={dayType}
           dailyTargetKcal={dailyTargetKcal}
           todaysWorkoutKcal={todaysWorkoutKcal}
+          todaysSportsKcal={todaysSportsKcal}
+          todaysStepsKcal={todaysStepsKcal}
+          todaysActivityKcal={todaysActivityKcal}
           goalKey={goalKey}
           overEat={overEat}
           burnRemaining={burnRemaining}
@@ -1205,6 +1208,7 @@ function EnergyPanel({
   ringValue,
   ringMax,
   ringColor,
+  breakdown,
 }) {
   return (
     <div className="border-2 border-ink p-4 bg-paper">
@@ -1246,6 +1250,34 @@ function EnergyPanel({
           </div>
         </div>
       </div>
+      {/* Per-source breakdown — each row ticks up live as the user logs a
+          workout, walks more steps, or finishes a sports session. This is
+          where the eating-target-adjusts-with-activity loop becomes
+          tangible: you can watch the numbers move. */}
+      {Array.isArray(breakdown) && breakdown.length > 0 && (
+        <div className="mt-3 grid grid-cols-3 gap-2">
+          {breakdown.map((b) => (
+            <div
+              key={b.label}
+              className="border border-ink/30 px-2 py-1.5"
+              style={{ borderLeftColor: b.color, borderLeftWidth: 4 }}
+            >
+              <div className="font-mono text-[9px] uppercase tracking-[0.25em] text-ink-muted">
+                {b.label}
+              </div>
+              <div
+                className="font-display text-lg font-black tabular-nums leading-none mt-0.5"
+                style={{ color: b.color }}
+              >
+                {(Number(b.value) || 0).toLocaleString()}
+                <span className="font-mono text-[9px] uppercase tracking-[0.25em] text-ink-muted ml-1">
+                  kcal
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -1258,6 +1290,9 @@ function EnergyHero({
   dayType,
   dailyTargetKcal,
   todaysWorkoutKcal,
+  todaysSportsKcal,
+  todaysStepsKcal,
+  todaysActivityKcal,
   goalKey,
   overEat,
   burnRemaining,
@@ -1274,6 +1309,28 @@ function EnergyHero({
   const burnStateLabel = burnRemaining <= 0 ? "kcal bonus" : "kcal to go";
   const burnStateColor = burnRemaining <= 0 ? "#4a6b3e" : "#6b5a3e";
 
+  // Where the eating target came from, made explicit so the user can see
+  // activity pushing the number up in real time.
+  const baseDayTarget = (dayType?.target || 0);
+  const activityBonus = Math.max(0, eatTarget - baseDayTarget);
+  const eatDetails =
+    activityBonus > 0
+      ? `Base ${dayType?.label || "day"} ${baseDayTarget.toLocaleString()} + activity +${Math.round(activityBonus)} = ${eatTarget.toLocaleString()} kcal`
+      : `${dayType?.label || "Today"} target ${eatTarget.toLocaleString()} kcal · activity will lift this`;
+
+  const burnDetails =
+    todaysDay
+      ? `Today: ${todaysDay.name} (~${expectedTraining} kcal) + ${stepGoal.toLocaleString()} steps target (~${expectedSteps} kcal)`
+      : `Rest day: just ${stepGoal.toLocaleString()} step target (~${expectedSteps} kcal)`;
+
+  // Real-time breakdown — these three numbers tick up as the user logs a
+  // workout, finishes a sports session, or walks more steps.
+  const burnBreakdown = [
+    { label: "Workout", value: Math.round(todaysWorkoutKcal), color: "#c44827" },
+    { label: "Sports",  value: Math.round(todaysSportsKcal),  color: "#d97a2c" },
+    { label: "Steps",   value: Math.round(todaysStepsKcal),   color: "#3b6aa3" },
+  ];
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
       <EnergyPanel
@@ -1284,11 +1341,7 @@ function EnergyHero({
         stateValue={eatStateValue}
         stateLabel={eatStateLabel}
         stateColor={eatStateColor}
-        details={
-          todaysWorkoutKcal > 0
-            ? `${dayType?.label || "Today"} ${Math.round(dailyTargetKcal - todaysWorkoutKcal)} + workout +${Math.round(todaysWorkoutKcal)} = ${eatTarget} kcal`
-            : `${dayType?.label || "Today"} target ${eatTarget} kcal`
-        }
+        details={eatDetails}
         ringValue={eaten}
         ringMax={eatTarget}
         ringColor="#c44827"
@@ -1301,14 +1354,11 @@ function EnergyHero({
         stateValue={burnStateValue}
         stateLabel={burnStateLabel}
         stateColor={burnStateColor}
-        details={
-          todaysDay
-            ? `Today: ${todaysDay.name} (~${expectedTraining} kcal) + ${stepGoal.toLocaleString()} steps target (~${expectedSteps} kcal)`
-            : `Rest day: just ${stepGoal.toLocaleString()} step target (~${expectedSteps} kcal)`
-        }
+        details={burnDetails}
         ringValue={burned}
         ringMax={burnTarget}
         ringColor="#4a6b3e"
+        breakdown={burnBreakdown}
       />
     </div>
   );
