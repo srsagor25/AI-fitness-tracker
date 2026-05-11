@@ -788,43 +788,14 @@ export function Dashboard({ setTab }) {
         setTab={setTab}
       />
 
-      {/* Goal-aware burn suggestion. Only visible when there's a real gap. */}
-      {burnSuggestion && burnSuggestion.gap > 0 && (
-        <Card>
-          <CardHeader
-            kicker={`Coach · ${burnSuggestion.goalKey}`}
-            title={`Burn ~${burnSuggestion.gap} kcal to stay on goal`}
-            subtitle={`Eaten ${burnSuggestion.eaten} kcal · target ${burnSuggestion.target} (+ already burned ${todaysActivityKcal})`}
-          />
-          <ul className="grid grid-cols-1 md:grid-cols-2 gap-2">
-            {burnSuggestion.ideas.map((idea, i) => {
-              const tab =
-                idea.kind === "steps"
-                  ? "activity/steps"
-                  : idea.kind === "sport"
-                    ? "activity/sports"
-                    : "activity/workout";
-              return (
-                <li key={i}>
-                  <button
-                    onClick={() => setTab(tab)}
-                    className="w-full text-left border-2 border-ink p-3 hover:bg-ink/5 transition-colors"
-                  >
-                    <div className="font-display text-base font-bold">{idea.label}</div>
-                    <div className="font-mono text-[9px] uppercase tracking-[0.25em] text-ink-muted mt-1">
-                      ≈ {idea.kcal} kcal · tap to start
-                    </div>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        </Card>
-      )}
-      {burnSuggestion && burnSuggestion.gap === 0 && burnSuggestion.eaten > 0 && (
-        <Card>
-          <CardHeader kicker={`Coach · ${burnSuggestion.goalKey}`} title="On goal" subtitle={burnSuggestion.message} />
-        </Card>
+      {/* Goal-aware burn suggestion. Visible whenever the day has any
+          food logged so the user always sees how they're tracking. */}
+      {burnSuggestion && burnSuggestion.eaten > 0 && (
+        <CoachCard
+          burn={burnSuggestion}
+          activityKcal={todaysActivityKcal}
+          setTab={setTab}
+        />
       )}
 
       <StreakStrip streaks={streaks} />
@@ -1739,6 +1710,143 @@ function StreakStrip({ streaks }) {
           </div>
         ))}
       </div>
+    </Card>
+  );
+}
+
+// ============================================================================
+// CoachCard — goal-aware feedback on today's calorie math, with hero-sized
+// numbers so the user can scan it in one glance. Three states:
+//   surplus  — eaten > target + burned. Show big red "+N kcal over",
+//              suggest burn ideas.
+//   on goal  — within ±50 kcal. Show big green "On goal" with the
+//              headroom remaining.
+//   under    — eaten < target. Show big blue "−N kcal headroom" so the
+//              user knows they still have room to eat.
+// ============================================================================
+
+function CoachCard({ burn, activityKcal, setTab }) {
+  const { eaten, target, gap, goalKey, ideas, message } = burn;
+  const ceiling = target + activityKcal;
+  const delta = eaten - ceiling; // + = over, − = under
+
+  // State decides palette + headline.
+  let state, headlineNumber, headlineLabel, headlineColor, kicker, sublabel;
+  if (gap > 0) {
+    state = "surplus";
+    headlineColor = "#c44827"; // red-orange
+    headlineNumber = `+${gap}`;
+    headlineLabel = "kcal over goal · burn it off";
+    kicker = "Coach · over";
+    sublabel = "Pick any of the burn options below — each one closes the gap.";
+  } else if (Math.abs(delta) <= 50) {
+    state = "ongoal";
+    headlineColor = "#4a6b3e"; // green
+    headlineNumber = "✓";
+    headlineLabel = "on goal";
+    kicker = "Coach · on goal";
+    sublabel = message || "You're locked in for today.";
+  } else {
+    state = "under";
+    headlineColor = "#3b6aa3"; // blue
+    headlineNumber = `${Math.round(-delta)}`;
+    headlineLabel = "kcal headroom · room to eat";
+    kicker = "Coach · under";
+    sublabel = message || "Plenty of budget left for the rest of the day.";
+  }
+
+  return (
+    <Card>
+      <CardHeader kicker={`${kicker} · ${goalKey}`} title="Today's calorie math" subtitle={sublabel} />
+
+      {/* Hero strip — big number front and centre. */}
+      <div
+        className="border-2 border-ink p-4 md:p-6 flex items-center gap-4 md:gap-6 mb-4"
+        style={{
+          borderLeftColor: headlineColor,
+          borderLeftWidth: 8,
+          backgroundColor: `${headlineColor}10`,
+        }}
+      >
+        <div
+          className="font-display font-black tabular-nums leading-none text-5xl md:text-6xl"
+          style={{ color: headlineColor }}
+        >
+          {headlineNumber}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div
+            className="font-mono text-[10px] uppercase tracking-[0.3em]"
+            style={{ color: headlineColor }}
+          >
+            {headlineLabel}
+          </div>
+          {state !== "ongoal" && (
+            <div className="font-body text-sm italic text-ink-muted mt-1">
+              Eaten {eaten} − goal ceiling {ceiling} ({target} target + {activityKcal} burned)
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Number grid — same numbers as the hero copy, but laid out as
+          stats so the user can scan each value. */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+        <Stat label="Eaten" value={eaten.toLocaleString()} suffix="kcal" accent="#c44827" />
+        <Stat label="Target" value={target.toLocaleString()} suffix="kcal" accent="#3b6aa3" />
+        <Stat label="Burned" value={Math.round(activityKcal).toLocaleString()} suffix="kcal" accent="#4a6b3e" />
+        <Stat
+          label={state === "surplus" ? "Over" : state === "under" ? "Under" : "Net"}
+          value={Math.abs(delta).toLocaleString()}
+          suffix="kcal"
+          accent={headlineColor}
+        />
+      </div>
+
+      {/* Burn ideas — only when over. Each idea card highlights its kcal. */}
+      {state === "surplus" && Array.isArray(ideas) && ideas.length > 0 && (
+        <>
+          <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted mb-2">
+            Burn options — tap to jump in
+          </div>
+          <ul className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            {ideas.map((idea, i) => {
+              const tab =
+                idea.kind === "steps"
+                  ? "activity/steps"
+                  : idea.kind === "sport"
+                    ? "activity/sports"
+                    : "activity/workout";
+              return (
+                <li key={i}>
+                  <button
+                    onClick={() => setTab(tab)}
+                    className="w-full text-left border-2 border-ink p-3 hover:bg-ink/5 transition-colors flex items-center gap-3"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="font-display text-base font-bold break-words">{idea.label}</div>
+                      <div className="font-mono text-[9px] uppercase tracking-[0.25em] text-ink-muted mt-1">
+                        tap to start
+                      </div>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <div
+                        className="font-display font-black tabular-nums leading-none text-2xl"
+                        style={{ color: "#c44827" }}
+                      >
+                        −{idea.kcal}
+                      </div>
+                      <div className="font-mono text-[9px] uppercase tracking-[0.25em] text-ink-muted">
+                        kcal
+                      </div>
+                    </div>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </>
+      )}
     </Card>
   );
 }
