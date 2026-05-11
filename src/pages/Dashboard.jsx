@@ -54,6 +54,9 @@ export function Dashboard({ setTab }) {
     todaysSportsKcal,
     todaysStepsKcal,
     todaysActivityKcal,
+    effectiveStepGoal,
+    sportsStepCredit,
+    baseStepGoal,
     todaysDay,
     todaysDayId,
     activeProgram,
@@ -367,18 +370,21 @@ export function Dashboard({ setTab }) {
     const suppRem = buildPharmaReminder("supplement", "Supps", "supplements");
     if (suppRem) list.push(suppRem);
 
-    // Steps progress — show as a reminder so the user can track + quick-add
-    // from the Today panel. Goal hit → "done"; partial → "scheduled".
-    const stepBaseline = profile.stepAdjust?.baseline || 10000;
-    const stepsHit = steps >= stepBaseline;
+    // Steps progress — uses effectiveStepGoal (baseline minus today's
+    // sports step-equivalent credit) so an hour of football lowers the
+    // bar rather than asking you to also walk 10k.
+    const stepsHit = steps >= effectiveStepGoal;
+    const creditNote = sportsStepCredit > 0
+      ? ` · −${sportsStepCredit.toLocaleString()} from sports`
+      : "";
     list.push({
       id: "steps",
       icon: Footprints,
       domain: "steps",
       label: stepsHit ? "Steps goal hit" : "Steps",
       detail: stepsHit
-        ? `${steps.toLocaleString()} / ${stepBaseline.toLocaleString()} ✓`
-        : `${steps.toLocaleString()} / ${stepBaseline.toLocaleString()} · tap to log more`,
+        ? `${steps.toLocaleString()} / ${effectiveStepGoal.toLocaleString()} ✓${creditNote}`
+        : `${steps.toLocaleString()} / ${effectiveStepGoal.toLocaleString()}${creditNote} · tap to log more`,
       countdown: null,
       urgency: stepsHit ? "done" : steps > 0 ? "scheduled" : "info",
       targetTab: "activity/steps",
@@ -449,6 +455,8 @@ export function Dashboard({ setTab }) {
     profile.workoutTime,
     profile.mealTimes,
     profile.stepAdjust?.baseline,
+    effectiveStepGoal,
+    sportsStepCredit,
     profile.breakfastPresets,
     profile.lunchPresets,
     profile.shakePresets,

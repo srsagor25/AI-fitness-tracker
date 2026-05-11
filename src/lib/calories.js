@@ -73,6 +73,16 @@ export function stepsToKcal(steps, weightKg) {
   return Math.round((Number(steps) || 0) * 0.04 * (w / 70));
 }
 
+// Inverse of stepsToKcal — how many steps would equal this many kcal at
+// the given bodyweight. Used to "credit" sports kcal back against the
+// step goal so a one-hour football session reduces today's step target.
+export function kcalToStepEquivalent(kcal, weightKg) {
+  const w = Number(weightKg) || 70;
+  const k = Number(kcal) || 0;
+  if (k <= 0) return 0;
+  return Math.round(k / (0.04 * (w / 70)));
+}
+
 // Approx weight change from a calorie surplus/deficit. 7700 kcal ≈ 1 kg of
 // fat (3500 kcal/lb). Returns kg (positive = gain, negative = loss).
 export function kcalToKg(kcal) {

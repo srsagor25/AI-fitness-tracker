@@ -10,7 +10,16 @@ import { load } from "../store/storage.js";
 import { Footprints } from "lucide-react";
 
 export function Steps() {
-  const { profile, steps, setSteps, stepAdjustKcal } = useApp();
+  const {
+    profile,
+    steps,
+    setSteps,
+    stepAdjustKcal,
+    effectiveStepGoal,
+    sportsStepCredit,
+    baseStepGoal,
+    todaysSportsKcal,
+  } = useApp();
   const [filter, setFilter] = useState({ mode: "preset", days: 30 });
   const userWeightKg = profile.stats?.weightKg || 70;
   const todaysKcal = stepsToKcal(steps, userWeightKg);
@@ -51,14 +60,17 @@ export function Steps() {
       <Card>
         <CardHeader
           kicker="Activity"
-          title="Steps Today"
-          subtitle="Adjusts your eating target via the step-adjust thresholds in your profile."
+          title={`Steps Today · ${steps.toLocaleString()} / ${effectiveStepGoal.toLocaleString()}`}
+          subtitle={
+            sportsStepCredit > 0
+              ? `Today's sports (${Math.round(todaysSportsKcal)} kcal) lowered your step goal from ${baseStepGoal.toLocaleString()} to ${effectiveStepGoal.toLocaleString()}.`
+              : "Walking lifts your eating target via the calories it burns."
+          }
           right={
             <div className="flex flex-wrap gap-2 items-end">
-              {stepAdjustKcal !== 0 && (
-                <Chip color={stepAdjustKcal > 0 ? "#4a6b3e" : "#c44827"}>
-                  {stepAdjustKcal > 0 ? "+" : ""}
-                  {stepAdjustKcal} kcal adjust
+              {sportsStepCredit > 0 && (
+                <Chip color="#d97a2c">
+                  −{sportsStepCredit.toLocaleString()} steps from sports
                 </Chip>
               )}
               <Chip color="#3b6aa3">~{todaysKcal} kcal burned</Chip>

@@ -4,7 +4,7 @@ import { BUILTIN_PROGRAMS } from "./defaults.js";
 import { TEMPLATES, cloneTemplate, calcMeal, ingredientDeltas, FOODS, composeDayTypes } from "./profiles.js";
 import { DEFAULT_SPORTS, estimateSportKcal } from "./sports.js";
 import { todayKey, dayOfWeek } from "../lib/time.js";
-import { estimateWorkoutKcal, stepsToKcal, dailyTarget, tdee } from "../lib/calories.js";
+import { estimateWorkoutKcal, stepsToKcal, kcalToStepEquivalent, dailyTarget, tdee } from "../lib/calories.js";
 import { isPacketEligibleItem } from "../lib/units.js";
 
 const AppContext = createContext(null);
@@ -400,6 +400,18 @@ export function AppProvider({ children }) {
   // Combined activity kcal — workout + sports + walking. Drives both the
   // Today panel and the daily eating-target adjustment.
   const todaysActivityKcal = todaysWorkoutKcal + todaysSportsKcal + todaysStepsKcal;
+
+  // Sports give you "credit" against today's step target — an hour of
+  // football is plenty of movement, no need to also rack up 10k steps.
+  // effectiveStepGoal = baseline − (steps that today's sports kcal would
+  // have been). Floored at 1000 so the goal can't disappear entirely on
+  // an extreme sports day.
+  const baseStepGoal = profile.stepAdjust?.baseline || 10000;
+  const sportsStepCredit = kcalToStepEquivalent(
+    todaysSportsKcal,
+    profile.stats?.weightKg || 70,
+  );
+  const effectiveStepGoal = Math.max(1000, baseStepGoal - sportsStepCredit);
 
   // ----- Diet totals (using customFoods overrides) -----
   const calc = useCallback((items) => calcMeal(items, customFoods), [customFoods]);
@@ -1371,6 +1383,7 @@ export function AppProvider({ children }) {
     // sports
     sportsList, sportsLog, addSportSession, removeSportSession, clearSportsLog,
     saveSport, deleteSport, todaysSportsKcal, todaysStepsKcal, todaysActivityKcal,
+    effectiveStepGoal, sportsStepCredit, baseStepGoal,
     burnSuggestion,
     // grocery
     grocery, adjustGrocery, restockGrocery, setGroceryQty, markBought,
