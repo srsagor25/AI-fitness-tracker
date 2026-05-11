@@ -48,6 +48,10 @@ export function Diet() {
     removeWaterEntry,
     dayTypeId,
     setDayTypeId,
+    manualDayTypeId,
+    autoDayTypeId,
+    todaysScheduledDay,
+    activeProgram,
     dayType,
     dayTypes,
     dayTotals,
@@ -140,8 +144,10 @@ export function Diet() {
           }
         />
 
-        {/* Day-type chips */}
-        <div className="flex flex-wrap gap-2 mb-4">
+        {/* Day-type chips — auto-follow the workout schedule unless the
+            user explicitly taps. The footer caption shows which mode the
+            day is in so they can tell whether to trust it. */}
+        <div className="flex flex-wrap gap-2 mb-2">
           {dayTypes.map((dt) => (
             <button
               key={dt.id}
@@ -159,6 +165,28 @@ export function Diet() {
               <span className="opacity-70">{dt.target}</span>
             </button>
           ))}
+        </div>
+        <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted mb-4 flex items-center gap-2 flex-wrap">
+          {manualDayTypeId == null ? (
+            <>
+              <span>🤖 Auto-set from {activeProgram?.name || "your program"}{" "}
+                {todaysScheduledDay && todaysScheduledDay !== "rest"
+                  ? `· today is ${activeProgram?.days?.find((d) => d.id === todaysScheduledDay)?.name || "a training"} day`
+                  : "· today is a rest day"}
+              </span>
+            </>
+          ) : (
+            <>
+              <span>✋ You picked this for today.</span>
+              <button
+                type="button"
+                onClick={() => setDayTypeId(null)}
+                className="border-2 border-ink px-2 py-0.5 hover:bg-ink hover:text-paper"
+              >
+                Follow workout schedule
+              </button>
+            </>
+          )}
         </div>
 
         {/* Daily target callout (steps & workouts are tracked under Activity) */}

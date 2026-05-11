@@ -1342,7 +1342,16 @@ export function AppProvider({ children }) {
     waterLog, addWaterEntry, removeWaterEntry,
     sleep, setSleepEntry, clearSleep,
     customTasks, addCustomTask, toggleCustomTask, removeCustomTask,
-    dayTypeId: effectiveDayTypeId, setDayTypeId, dayType, dayTypes,
+    dayTypeId: effectiveDayTypeId,
+    setDayTypeId,
+    dayType, dayTypes,
+    // Manual override state — null means the user hasn't picked a chip
+    // for today, so the diet is auto-following the workout schedule.
+    // Diet UI surfaces this so the user can see whether they're on auto
+    // or on a manual choice (and clear the override via setDayTypeId(null)).
+    manualDayTypeId: dayTypeId,
+    autoDayTypeId,
+    todaysScheduledDay: _todaysDayId,
     clearDay,
     // totals + helpers
     dayTotals, dailyTargetKcal,
