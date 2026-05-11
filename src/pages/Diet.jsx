@@ -51,6 +51,7 @@ export function Diet() {
     manualDayTypeId,
     autoDayTypeId,
     todaysScheduledDay,
+    todaysScheduledSport,
     activeProgram,
     dayType,
     dayTypes,
@@ -170,9 +171,11 @@ export function Diet() {
           {manualDayTypeId == null ? (
             <>
               <span>🤖 Auto-set from {activeProgram?.name || "your program"}{" "}
-                {todaysScheduledDay && todaysScheduledDay !== "rest"
-                  ? `· today is ${activeProgram?.days?.find((d) => d.id === todaysScheduledDay)?.name || "a training"} day`
-                  : "· today is a rest day"}
+                {todaysScheduledSport
+                  ? `· today is ${todaysScheduledSport.icon || ""} ${todaysScheduledSport.name} (sports day)`
+                  : todaysScheduledDay && todaysScheduledDay !== "rest"
+                    ? `· today is ${activeProgram?.days?.find((d) => d.id === todaysScheduledDay)?.name || "a training"} day`
+                    : "· today is a rest day"}
               </span>
             </>
           ) : (

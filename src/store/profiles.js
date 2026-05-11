@@ -236,13 +236,17 @@ export function cloneTemplate(template) {
   return JSON.parse(JSON.stringify(template));
 }
 
-// Diet uses two day types: Rest and Workout. A workout day eats this much
-// more than rest; the surplus is meant to be covered by an extra shake or
-// snack. Sports/steps still feed kcal independently via the Activity tab.
+// Diet uses three day types: Rest, Workout, Sports. Each has its own
+// base eating target — the bonuses below sit on top of the user's
+// goal-aware rest target. Actual logged activity (workout/sports/steps
+// kcal) is added on top of these bases by AppContext.dailyTargetKcal.
 export const WORKOUT_DAY_BONUS_KCAL = 300;
+export const SPORTS_DAY_BONUS_KCAL = 150;
 
-// Build the day-type chip list. Always exactly two entries: Rest and
-// Workout (rest + WORKOUT_DAY_BONUS_KCAL).
+// Build the day-type chip list. Exactly three entries:
+//   Rest    (rest target)
+//   Workout (rest + WORKOUT_DAY_BONUS_KCAL)
+//   Sports  (rest + SPORTS_DAY_BONUS_KCAL)
 //
 // `restTargetKcal` is computed by the caller (AppContext) from the user's
 // goal/TDEE — we don't ask the user to type it in. We still honor a
@@ -267,7 +271,15 @@ export function composeDayTypes(_activeProgram, profile = {}, restTargetKcal) {
     target: target + WORKOUT_DAY_BONUS_KCAL,
     suggestShake: "shake_power",
   };
-  return [rest, workout];
+  const sports = {
+    id: "sports",
+    label: "Sports Day",
+    icon: "⚽",
+    color: "#d97a2c",
+    target: target + SPORTS_DAY_BONUS_KCAL,
+    suggestShake: "shake_power",
+  };
+  return [rest, workout, sports];
 }
 
 // Look up a food by key, merging the base FOODS entry with any user override.

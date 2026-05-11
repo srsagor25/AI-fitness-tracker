@@ -91,6 +91,7 @@ export function Dashboard({ setTab }) {
     removeCustomTask,
     plan,
     addMealToSlot,
+    removeMealFromSlot,
     dateKey,
   } = useApp();
   const [showAddTask, setShowAddTask] = useState(false);
@@ -236,6 +237,10 @@ export function Dashboard({ setTab }) {
               : "scheduled",
         slot,
         plannedPreset,
+        // When the slot is logged, hand the reminder the meal ids so an
+        // "Unlog last" button can remove the most recent entry without
+        // the user navigating to the Diet tab.
+        loggedMealIds: logged ? slotMeals.map((m) => m.id) : [],
       });
     }
 
@@ -669,6 +674,29 @@ export function Dashboard({ setTab }) {
                     className="font-mono text-[10px] uppercase tracking-[0.2em] border-2 border-ink px-2 py-1 hover:bg-ink hover:text-paper whitespace-nowrap"
                   >
                     Take ✓
+                  </button>
+                );
+              } else if (
+                r.domain === "diet" &&
+                r.urgency === "done" &&
+                r.loggedMealIds &&
+                r.loggedMealIds.length > 0
+              ) {
+                // Quick "Unlog last" when the slot is marked done — for
+                // when the user accidentally tapped Take ✓ or just wants
+                // to revert a meal they haven't actually eaten yet.
+                quickAction = (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const lastId = r.loggedMealIds[r.loggedMealIds.length - 1];
+                      if (lastId) removeMealFromSlot(r.slot, lastId);
+                    }}
+                    className="font-mono text-[10px] uppercase tracking-[0.2em] border-2 border-ink px-2 py-1 hover:bg-ink hover:text-paper whitespace-nowrap"
+                    title="Remove the most recent meal logged for this slot"
+                  >
+                    Unlog ×
                   </button>
                 );
               } else if (

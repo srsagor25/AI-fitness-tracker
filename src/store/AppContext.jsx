@@ -354,7 +354,15 @@ export function AppProvider({ children }) {
   // workout-tab values below redo it for clarity.
   const _todayWeekIndex = dayOfWeek();
   const _todaysDayId = (weeks[activeProgram.id] || activeProgram.defaultWeek)[_todayWeekIndex];
-  const autoDayTypeId = _todaysDayId && _todaysDayId !== "rest" ? "workout" : "rest";
+  // Schedule slots can be:
+  //   "rest"          → rest day
+  //   "<programDay>"  → workout day
+  //   "sports:<id>"   → sports day (sport id selected by the user)
+  const autoDayTypeId = !_todaysDayId || _todaysDayId === "rest"
+    ? "rest"
+    : typeof _todaysDayId === "string" && _todaysDayId.startsWith("sports:")
+      ? "sports"
+      : "workout";
 
   // dayTypeId === null means "no explicit choice yet — follow the program".
   const effectiveDayTypeId = dayTypeId || autoDayTypeId;
@@ -365,9 +373,21 @@ export function AppProvider({ children }) {
 
   const todayWeekIndex = dayOfWeek();
   const todaysDayId = (weeks[activeProgram.id] || activeProgram.defaultWeek)[todayWeekIndex];
-  const todaysDay = todaysDayId && todaysDayId !== "rest"
-    ? activeProgram.days.find((d) => d.id === todaysDayId)
-    : null;
+  // todaysDay only resolves for program days. Sports-slot days (which
+  // store "sports:<id>") and rest days both return null here so the
+  // Workout tab doesn't try to render a training session.
+  const todaysDay =
+    todaysDayId && todaysDayId !== "rest" && !String(todaysDayId).startsWith("sports:")
+      ? activeProgram.days.find((d) => d.id === todaysDayId)
+      : null;
+
+  // Today's scheduled sport (if any) — used by the Diet tab caption so
+  // a sports-day chip can show "today is Football" instead of just "Sports".
+  const todaysScheduledSport = useMemo(() => {
+    if (!todaysDayId || !String(todaysDayId).startsWith("sports:")) return null;
+    const sid = todaysDayId.slice("sports:".length);
+    return (sportsList || []).find((s) => s.id === sid) || null;
+  }, [todaysDayId, sportsList]);
 
   const todaysWorkoutKcal = useMemo(() => {
     const sessions = history.filter((h) => todayKey(new Date(h.date)) === dateKey);
@@ -1364,6 +1384,7 @@ export function AppProvider({ children }) {
     manualDayTypeId: dayTypeId,
     autoDayTypeId,
     todaysScheduledDay: _todaysDayId,
+    todaysScheduledSport,
     clearDay,
     // totals + helpers
     dayTotals, dailyTargetKcal,

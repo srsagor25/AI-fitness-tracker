@@ -256,7 +256,11 @@ export function Workout() {
     dailyTargetKcal,
     sleep,
     weightLog,
+    sportsList,
   } = useApp();
+  // When the user cycles a day chip to "Sports & Others" we pop a modal
+  // so they can pick which specific sport that day represents.
+  const [sportPickerForDay, setSportPickerForDay] = useState(null);
 
   const programWeek =
     weeks[activeProgram.id] || activeProgram.defaultWeek;
@@ -290,19 +294,45 @@ export function Workout() {
       : currentSession.accumSec + (Date.now() - currentSession.resumedAt) / 1000
     : 0;
 
-  // Toggle a day on the week chip
+  // Toggle a day on the week chip. Cycle: rest → program day 1 → … →
+  // program day N → Sports & Others → rest. When we land on the sports
+  // step we don't pick blindly — we open the picker so the user chooses
+  // which specific sport this day represents. Tapping a chip that's
+  // already on a sport re-opens the picker so the sport can be changed.
   function cycleWeekDay(dayIdx) {
-    const ids = ["rest", ...activeProgram.days.map((d) => d.id)];
     const cur = programWeek[dayIdx] || "rest";
+    if (typeof cur === "string" && cur.startsWith("sports:")) {
+      setSportPickerForDay(dayIdx);
+      return;
+    }
+    const programIds = activeProgram.days.map((d) => d.id);
+    const ids = ["rest", ...programIds, "_sports"];
     const idx = ids.indexOf(cur);
-    const nextId = ids[(idx + 1) % ids.length];
+    const nextId = ids[(idx === -1 ? -1 : idx) + 1] || "rest";
+    if (nextId === "_sports") {
+      setSportPickerForDay(dayIdx);
+      return;
+    }
     const newWeek = [...programWeek];
-    newWeek[dayIdx] = nextId;
+    newWeek[dayIdx] = nextId === "_sports" ? "rest" : nextId;
     setProgramWeek(activeProgram.id, newWeek);
+  }
+
+  function pickSportForDay(sportId) {
+    if (sportPickerForDay == null) return;
+    const newWeek = [...programWeek];
+    newWeek[sportPickerForDay] = `sports:${sportId}`;
+    setProgramWeek(activeProgram.id, newWeek);
+    setSportPickerForDay(null);
   }
 
   function dayChipLabel(id) {
     if (id === "rest") return "Rest";
+    if (typeof id === "string" && id.startsWith("sports:")) {
+      const sid = id.slice("sports:".length);
+      const sport = (sportsList || []).find((s) => s.id === sid);
+      return sport ? `${sport.icon || "⚽"} ${sport.name}` : "Sports";
+    }
     return activeProgram.days.find((d) => d.id === id)?.name || "—";
   }
 
@@ -564,9 +594,67 @@ export function Workout() {
           })}
         </div>
         <p className="font-body text-sm italic text-ink-muted mt-3">
-          Tap a day to cycle through this program's training days. Saved automatically.
+          Tap a day to cycle: Rest → training days → Sports & Others → Rest.
+          Sports days open a picker so you can choose which sport.
         </p>
       </Card>
+
+      {/* Sport picker modal — shown when cycleWeekDay lands on the
+          Sports & Others step, or when the user re-taps a sports chip
+          to change which sport. */}
+      {sportPickerForDay != null && (
+        <Modal
+          open
+          onClose={() => setSportPickerForDay(null)}
+          title={`Sports & Others · ${DAYS_SHORT[sportPickerForDay]}`}
+          maxWidth="max-w-xl"
+          footer={
+            <>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  // Cancel without saving — leave the slot at whatever
+                  // it was before. If user is moving INTO sports from
+                  // a non-sports slot, set it to rest so we don't leave
+                  // a half-state.
+                  const cur = programWeek[sportPickerForDay] || "rest";
+                  if (typeof cur === "string" && !cur.startsWith("sports:")) {
+                    const newWeek = [...programWeek];
+                    newWeek[sportPickerForDay] = "rest";
+                    setProgramWeek(activeProgram.id, newWeek);
+                  }
+                  setSportPickerForDay(null);
+                }}
+              >
+                Cancel
+              </Button>
+            </>
+          }
+        >
+          <p className="font-body text-sm italic text-ink-muted mb-3">
+            Pick which sport you do on {DAYS_SHORT[sportPickerForDay]}s.
+            This day will tag as a Sports day in Diet too, so eating + step
+            targets adjust automatically.
+          </p>
+          <ul className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-[60vh] overflow-y-auto">
+            {(sportsList || []).map((s) => (
+              <li key={s.id}>
+                <button
+                  type="button"
+                  onClick={() => pickSportForDay(s.id)}
+                  className="w-full text-left border-2 border-ink p-3 hover:bg-ink/5 transition-colors flex items-center gap-2"
+                  style={{ borderLeftColor: s.color || "#c44827", borderLeftWidth: 6 }}
+                >
+                  <span className="text-2xl shrink-0">{s.icon}</span>
+                  <span className="font-display text-base font-bold break-words">
+                    {s.name}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </Modal>
+      )}
 
       <Card>
         <CardHeader
