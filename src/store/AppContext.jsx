@@ -5,6 +5,7 @@ import { TEMPLATES, cloneTemplate, calcMeal, ingredientDeltas, FOODS, composeDay
 import { DEFAULT_SPORTS, estimateSportKcal } from "./sports.js";
 import { todayKey, dayOfWeek } from "../lib/time.js";
 import { estimateWorkoutKcal, stepsToKcal, dailyTarget, tdee } from "../lib/calories.js";
+import { isPacketEligibleItem } from "../lib/units.js";
 
 const AppContext = createContext(null);
 
@@ -219,17 +220,17 @@ export function AppProvider({ children }) {
           merged = { ...merged, ...p };
           changed = true;
         }
-        // Default trackByPackets to true for items that already have a
-        // meaningful packetSize relative to the qty (i.e. clearly bought
-        // in packets, e.g. chicken 1000g with packetSize 333g). User can
-        // toggle off in the item modal at any time.
-        if (it.trackByPackets == null) {
-          const ps = Number(it.packetSize) || 0;
-          const auto =
-            ps > 1 &&
-            (it.unit === "g" || it.unit === "ml" || it.unit === "kg" || it.unit === "L") &&
-            (Number(it.initialQty) || 0) >= ps;
-          merged = { ...merged, trackByPackets: auto };
+        // Packet tracking is meaningful for fridge meat / seafood only
+        // (chicken, beef, fish, …). For everything else we keep the
+        // conventional g / ml / pc display and hide the packet UI.
+        const eligible = isPacketEligibleItem(it);
+        if (merged.trackByPackets == null) {
+          merged = { ...merged, trackByPackets: eligible };
+          changed = true;
+        } else if (merged.trackByPackets && !eligible) {
+          // Existing data may have packet-tracking flagged on items
+          // that no longer qualify under the new rules — flip them off.
+          merged = { ...merged, trackByPackets: false };
           changed = true;
         }
         return merged;

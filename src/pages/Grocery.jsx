@@ -5,7 +5,7 @@ import { Button, IconButton } from "../components/ui/Button.jsx";
 import { Field, TextInput, Select, Chip } from "../components/ui/Field.jsx";
 import { Modal } from "../components/ui/Modal.jsx";
 import { GROCERY_CATEGORIES } from "../store/profiles.js";
-import { getAllUnits, isContinuousUnit, defaultStep, formatQty } from "../lib/units.js";
+import { getAllUnits, isContinuousUnit, defaultStep, formatQty, isPacketEligibleItem } from "../lib/units.js";
 import {
   Plus,
   Trash2,
@@ -49,16 +49,22 @@ export function Grocery() {
 
   // Global display mode for the inventory + auto-shopping. Persisted on
   // the profile so it sticks across reloads. Three options:
-  //   - "auto":         honor each item's trackByPackets toggle (default)
+  //   - "conventional": ignore packets, show smart units (g↔kg, ml↔L) — DEFAULT
+  //   - "auto":         honor each item's trackByPackets toggle
   //   - "packets":      force packet display where a packet size is set
-  //   - "conventional": ignore packets, show smart units (g↔kg, ml↔L, …)
-  const inventoryView = profile.inventoryView || "auto";
+  //
+  // Packets only apply to fridge meat/seafood (chicken, beef, fish, …).
+  // Other items always render conventionally regardless of view.
+  const inventoryView = profile.inventoryView || "conventional";
   const setInventoryView = (v) => updateProfile({ inventoryView: v });
 
   const bufferDays = Number(profile.groceryBufferDays) || 0;
 
   // Decide the display mode for one item, applying the global override.
+  // Hard gate: packets are *only* shown for fridge meat/seafood items.
+  // Everything else falls back to conventional units no matter what.
   function showAsPackets(it) {
+    if (!isPacketEligibleItem(it)) return false;
     const ps = Number(it.packetSize) || 0;
     if (inventoryView === "conventional") return false;
     if (inventoryView === "packets") return ps > 1;
@@ -546,7 +552,13 @@ export function Grocery() {
           updateProfile={updateProfile}
           onClose={() => setEditing(null)}
           onSave={(it) => {
-            saveGroceryItem(it);
+            // Defensive: never persist trackByPackets on a non-meat item.
+            // The toggle is hidden in the modal but the field may carry
+            // over from older saves or template imports.
+            const cleaned = isPacketEligibleItem(it)
+              ? it
+              : { ...it, trackByPackets: false };
+            saveGroceryItem(cleaned);
             setEditing(null);
           }}
         />
@@ -670,27 +682,31 @@ function ItemModal({ item, onClose, onSave, profile, updateProfile }) {
           </Field>
         </div>
 
-        {/* Packet-tracking toggle */}
-        <div className="border-2 border-ink p-3 bg-ink/5">
-          <label className="flex items-start gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={!!draft.trackByPackets}
-              onChange={(e) => setDraft({ ...draft, trackByPackets: e.target.checked })}
-              className="mt-1"
-            />
-            <div className="flex-1 min-w-0">
-              <div className="font-display text-base font-bold">Track by packets</div>
-              <div className="font-body text-sm italic text-ink-muted">
-                Use this for items you store in fixed-size packs (chicken 500g packs, eggs 12-trays, etc.).
-                Leave off if you just count the quantity.
+        {/* Packet-tracking toggle — only for fridge meat / seafood. Other
+            items use plain conventional units (g, ml, pc) which is enough
+            for everything that doesn't come in fixed-weight packs. */}
+        {isPacketEligibleItem(draft) && (
+          <div className="border-2 border-ink p-3 bg-ink/5">
+            <label className="flex items-start gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={!!draft.trackByPackets}
+                onChange={(e) => setDraft({ ...draft, trackByPackets: e.target.checked })}
+                className="mt-1"
+              />
+              <div className="flex-1 min-w-0">
+                <div className="font-display text-base font-bold">Track by packets</div>
+                <div className="font-body text-sm italic text-ink-muted">
+                  Recommended for fridge meat / seafood you store in fixed-size packs
+                  (chicken 500 g, beef cuts, fish fillets). Leave off to just count grams.
+                </div>
               </div>
-            </div>
-          </label>
-        </div>
+            </label>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          {draft.trackByPackets ? (
+          {isPacketEligibleItem(draft) && draft.trackByPackets ? (
             <>
               <Field label="Packet size" hint={`One packet = N ${draft.unit}.`}>
                 <TextInput

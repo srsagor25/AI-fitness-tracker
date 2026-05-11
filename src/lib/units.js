@@ -54,6 +54,25 @@ export function defaultStep(unit) {
   return 1;
 }
 
+// Which items make sense to track in fridge packets — meat / seafood
+// only. Everything else uses conventional units (g, ml, pieces, …) and
+// the packet UI is hidden from the editor.
+//
+// Match is on the item's name OR storage key (e.g. "chicken_thigh",
+// "Beef Bhuna Cut", "Salmon Fillet") so users can add custom items and
+// still benefit. Spelling variants included.
+const PACKET_ELIGIBLE_KEYWORDS = [
+  "chicken", "beef", "fish", "mutton", "lamb", "pork",
+  "prawn", "shrimp", "salmon", "tuna", "duck", "turkey",
+  "mince", "kima", // bn variants
+];
+
+export function isPacketEligibleItem(item) {
+  if (!item) return false;
+  const hay = `${item.name || ""} ${item.key || ""}`.toLowerCase();
+  return PACKET_ELIGIBLE_KEYWORDS.some((k) => hay.includes(k));
+}
+
 // Smart "conventional" formatter — turns the stored qty into how a human
 // would read it. Mass: < 1000g shown as "750 g", ≥ 1000g shown as "1.5 kg".
 // Volume: same with ml ↔ L. Counts (pc, eggs, packs, etc.) stay numeric.
