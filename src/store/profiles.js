@@ -24,7 +24,7 @@ export const FOODS = {
   cashew:             { key: "cashew",             display: "Cashew (Kaju)",             unit: "g",     kcal: 5.53, protein: 0.18,  fat: 0.440,  carbs: 0.300, groceryKey: "cashew" },
   dates:              { key: "dates",              display: "Dates (Khejur)",            unit: "g",     kcal: 2.77, protein: 0.018, fat: 0.0015, carbs: 0.750, groceryKey: "dates" },
   peanut:             { key: "peanut",             display: "Peanut/Mixed Nuts",         unit: "g",     kcal: 5.85, protein: 0.26,  fat: 0.490,  carbs: 0.160, groceryKey: "peanut" },
-  sauce:              { key: "sauce",              display: "Sauce",                     unit: "cup",   kcal: 48,   protein: 2,     fat: 3,      carbs: 10,    groceryKey: "sauce" },
+  sauce:              { key: "sauce",              display: "Sauce",                     unit: "ml",    kcal: 0.5,  protein: 0.010, fat: 0.0125, carbs: 0.060, groceryKey: "sauce" },
 };
 
 export const GROCERY_CATEGORIES = ["Protein", "Dairy & Shake", "Aromatics", "Moshla", "Fresh", "Pantry"];
@@ -97,11 +97,11 @@ const SAIDUR_SHAKE_PRESETS = {
 
 const SAIDUR_DINNER_PRESETS = {
   dinner_fish: { key: "dinner_fish", name: "Fish Dinner", icon: "🐟",
-    items: [{ food: "fish", amount: 333 }, { food: "egg", amount: 2 }, { food: "fruit_mixed", amount: 250 }, { food: "oil_spray", amount: 1 }, { food: "sauce", amount: 1 }] },
+    items: [{ food: "fish", amount: 333 }, { food: "egg", amount: 2 }, { food: "fruit_mixed", amount: 250 }, { food: "oil_spray", amount: 1 }, { food: "sauce", amount: 30 }] },
   dinner_beef: { key: "dinner_beef", name: "Beef Dinner", icon: "🥩",
-    items: [{ food: "beef_lean", amount: 250 }, { food: "egg", amount: 2 }, { food: "fruit_mixed", amount: 250 }, { food: "oil_spray", amount: 1 }, { food: "sauce", amount: 1 }] },
+    items: [{ food: "beef_lean", amount: 250 }, { food: "egg", amount: 2 }, { food: "fruit_mixed", amount: 250 }, { food: "oil_spray", amount: 1 }, { food: "sauce", amount: 30 }] },
   dinner_fish_light: { key: "dinner_fish_light", name: "Fish Light", icon: "🐟", note: "Auto-suggested after beef/cheat/family lunch",
-    items: [{ food: "fish", amount: 333 }, { food: "egg", amount: 2 }, { food: "oil_spray", amount: 1 }, { food: "sauce", amount: 1 }] },
+    items: [{ food: "fish", amount: 333 }, { food: "egg", amount: 2 }, { food: "oil_spray", amount: 1 }, { food: "sauce", amount: 30 }] },
 };
 
 const SAIDUR_GROCERY_TEMPLATE = [
@@ -130,7 +130,7 @@ const SAIDUR_GROCERY_TEMPLATE = [
   { key: "oil",            name: "Cooking Oil",              category: "Pantry",        unit: "ml",     initialQty: 1000, packetSize: 500,  lowThreshold: 200, icon: "🫗" },
   { key: "ghee",           name: "Ghee",                     category: "Pantry",        unit: "g",      initialQty: 250,  packetSize: 250,  lowThreshold: 50,  icon: "🧈" },
   { key: "oil_spray",      name: "Oil Spray",                category: "Pantry",        unit: "bottle", initialQty: 1,    packetSize: 1,    lowThreshold: 1,   icon: "🫧" },
-  { key: "sauce",          name: "Sauce",                    category: "Pantry",        unit: "cup",    initialQty: 14,   packetSize: 14,   lowThreshold: 4,   icon: "🌶️" },
+  { key: "sauce",          name: "Sauce",                    category: "Pantry",        unit: "ml",     initialQty: 1500, packetSize: 500,  lowThreshold: 200, icon: "🌶️" },
 ];
 
 const SAIDUR_COFFEE_SCHEDULE = [
@@ -330,6 +330,37 @@ export function ingredientDeltas(items) {
     const f = FOODS[it.food];
     if (!f || !f.groceryKey) continue;
     out[f.groceryKey] = (out[f.groceryKey] || 0) + (Number(it.amount) || 0);
+  }
+  return out;
+}
+
+// Total amount of each grocery item needed over the next N days of the
+// user's meal plan, keyed by groceryKey. Used by Pantry → Auto-shopping
+// to surface "you need X of <item>" suggestions before the meals are
+// even logged. Plan shape: { [yyyymmdd]: { breakfast|lunch|shake|dinner: presetKey } }.
+const PLAN_SLOTS = ["breakfast", "lunch", "shake", "dinner"];
+
+export function planNeeds(plan, profile, dateKeys) {
+  const out = {};
+  if (!plan || !profile || !Array.isArray(dateKeys)) return out;
+  for (const dk of dateKeys) {
+    const day = plan[dk] || {};
+    for (const slot of PLAN_SLOTS) {
+      const mealKey = day[slot];
+      if (!mealKey) continue;
+      const presetMap = profile[`${slot}Presets`] || {};
+      // Plan can store a bare preset key (string) or { type, key } —
+      // mirror Diet.jsx's tolerant lookup.
+      const key = typeof mealKey === "string" ? mealKey : mealKey?.key;
+      const preset = key ? presetMap[key] : null;
+      if (!preset || !Array.isArray(preset.items)) continue;
+      for (const item of preset.items) {
+        if (item.direct) continue;
+        const f = FOODS[item.food];
+        if (!f || !f.groceryKey) continue;
+        out[f.groceryKey] = (out[f.groceryKey] || 0) + (Number(item.amount) || 0);
+      }
+    }
   }
   return out;
 }

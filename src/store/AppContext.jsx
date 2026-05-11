@@ -116,11 +116,11 @@ export function AppProvider({ children }) {
   const [sportsLog, setSportsLog] = useState(() => load("sports:log", []));
 
   // ----- Grocery -----
-  const [grocery, setGrocery] = useState(() => {
-    const stored = load("grocery:items", null);
-    if (stored) return stored;
-    return cloneTemplate(TEMPLATES.saidur).groceryTemplate.map((it) => ({ ...it, qty: it.initialQty }));
-  });
+  // Inventory starts EMPTY. Items enter only when the user buys them via
+  // auto-shopping (which pulls candidates from the meal plan + the
+  // profile's grocery template — the template acts as a catalog of
+  // possible items, not a pre-seeded inventory).
+  const [grocery, setGrocery] = useState(() => load("grocery:items", []));
   const [manualShopping, setManualShopping] = useState(() => load("shopping:manual", []));
   const [groceryActivity, setGroceryActivity] = useState(() => load("grocery:activity", []));
 
@@ -128,13 +128,32 @@ export function AppProvider({ children }) {
   const [plan, setPlan] = useState(() => load("plan:current_week", {}));
 
   // ----- Snackbar -----
+  // showSnack(msg) or showSnack(msg, { undo }) — when an undo callback
+  // is passed, the toast renders an "Undo" button that calls it. Useful
+  // for one-tap actions (Take ✓, +1k steps, log dose) where a mistap
+  // would otherwise require navigating to the relevant tab to remove
+  // the entry by hand.
   const [snackbar, setSnackbar] = useState(null);
-  const showSnack = useCallback((msg) => {
+  const showSnack = useCallback((msg, opts) => {
     const id = uid("s");
-    setSnackbar({ id, msg });
+    const undo = opts && typeof opts.undo === "function" ? opts.undo : null;
+    setSnackbar({
+      id,
+      msg,
+      undo: undo
+        ? () => {
+            try { undo(); } finally {
+              setSnackbar((s) => (s && s.id === id ? null : s));
+            }
+          }
+        : null,
+    });
+    // Show undo-enabled toasts longer so the user actually has time to
+    // notice and tap them.
+    const ms = undo ? 5000 : 2200;
     setTimeout(() => {
       setSnackbar((s) => (s && s.id === id ? null : s));
-    }, 2200);
+    }, ms);
   }, []);
 
   // One-time profile migration: collapse the old per-program day-type
@@ -281,7 +300,10 @@ export function AppProvider({ children }) {
     if (!tpl) return;
     const fresh = cloneTemplate(tpl);
     setProfile(fresh);
-    setGrocery(fresh.groceryTemplate.map((it) => ({ ...it, qty: it.initialQty })));
+    // Inventory stays empty on profile load — the template is a catalog,
+    // not a starter pack. Items flow in through the Pantry's auto-
+    // shopping "Bought" action.
+    setGrocery([]);
     setCoffee(new Array(fresh.coffeeSchedule.length).fill(false));
     setMeals(blankMeals());
     setCheats([]);
@@ -656,9 +678,10 @@ export function AppProvider({ children }) {
   function addMealToSlot(slot, meal) {
     if (!SLOTS.includes(slot)) slot = "snack";
     const fullMeal = { id: uid("m"), at: Date.now(), ...meal };
-    setMeals((prev) => ({ ...prev, [slot]: [...prev[slot], fullMeal] }));
-    // Decrement inventory
+    setMeals((prev) => ({ ...prev, [slot]: [...(prev[slot] || []), fullMeal] }));
+    // Decrement inventory + remember the deltas so Undo can reverse them.
     const deltas = ingredientDeltas(meal.items);
+    const inventoryDeltas = []; // captured for undo
     if (Object.keys(deltas).length) {
       const activityEntries = [];
       setGrocery((prev) =>
@@ -675,6 +698,7 @@ export function AppProvider({ children }) {
                 reason: "consumed",
                 source: meal.name,
               });
+              inventoryDeltas.push({ key: it.key, restore: -realDelta });
             }
             return { ...it, qty: newQty };
           }
@@ -683,11 +707,29 @@ export function AppProvider({ children }) {
       );
       logGroceryActivity(activityEntries);
     }
-    showSnack(`Logged ${meal.name} to ${slot}`);
+    showSnack(`Logged ${meal.name} to ${slot}`, {
+      undo: () => {
+        // Remove the just-added meal row.
+        setMeals((prev) => ({
+          ...prev,
+          [slot]: (prev[slot] || []).filter((m) => m.id !== fullMeal.id),
+        }));
+        // Restore inventory that was decremented.
+        if (inventoryDeltas.length > 0) {
+          setGrocery((prev) =>
+            prev.map((it) => {
+              const d = inventoryDeltas.find((x) => x.key === it.key);
+              return d ? { ...it, qty: it.qty + d.restore } : it;
+            }),
+          );
+        }
+        showSnack("Undone");
+      },
+    });
   }
 
   function removeMealFromSlot(slot, id) {
-    setMeals((prev) => ({ ...prev, [slot]: prev[slot].filter((m) => m.id !== id) }));
+    setMeals((prev) => ({ ...prev, [slot]: (prev[slot] || []).filter((m) => m.id !== id) }));
   }
 
   function addCheat(meal) {
@@ -788,10 +830,17 @@ export function AppProvider({ children }) {
 
   // ----- Water entries -----
   function addWaterEntry({ qty = 1, unit = "cup", time } = {}) {
+    const id = uid("w");
     setWaterLog((prev) => [
       ...prev,
-      { id: uid("w"), qty: Number(qty) || 1, unit, time: time || null, ts: Date.now() },
+      { id, qty: Number(qty) || 1, unit, time: time || null, ts: Date.now() },
     ]);
+    showSnack(`+${Number(qty) || 1} ${unit} water`, {
+      undo: () => {
+        setWaterLog((prev) => prev.filter((e) => e.id !== id));
+        showSnack("Undone");
+      },
+    });
   }
   function removeWaterEntry(id) {
     setWaterLog((prev) => prev.filter((e) => e.id !== id));
@@ -799,10 +848,11 @@ export function AppProvider({ children }) {
 
   // ----- Coffee entries -----
   function addCoffeeEntry({ qty = 1, unit = "cup", time, scheduleIdx } = {}) {
+    const id = uid("c");
     setCoffeeLog((prev) => [
       ...prev,
       {
-        id: uid("c"),
+        id,
         qty: Number(qty) || 1,
         unit,
         time: time || null,
@@ -810,6 +860,12 @@ export function AppProvider({ children }) {
         ts: Date.now(),
       },
     ]);
+    showSnack(`+${Number(qty) || 1} ${unit} coffee`, {
+      undo: () => {
+        setCoffeeLog((prev) => prev.filter((e) => e.id !== id));
+        showSnack("Undone");
+      },
+    });
   }
   function removeCoffeeEntry(id) {
     setCoffeeLog((prev) => prev.filter((e) => e.id !== id));
@@ -933,6 +989,21 @@ export function AppProvider({ children }) {
     setMeds((prev) => prev.filter((m) => m.id !== id));
     setMedsTakenToday((prev) => prev.filter((d) => d.medId !== id));
   }
+  // Step quick-add. Pulled out of the inline +1k click handler in
+  // Dashboard so the snackbar can offer an Undo if the user taps by
+  // mistake.
+  function bumpSteps(delta) {
+    const d = Number(delta) || 0;
+    if (d === 0) return;
+    setSteps((s) => Math.max(0, s + d));
+    showSnack(`${d > 0 ? "+" : ""}${d.toLocaleString()} steps`, {
+      undo: () => {
+        setSteps((s) => Math.max(0, s - d));
+        showSnack("Undone");
+      },
+    });
+  }
+
   function logDose(med, quantityOverride, note = "") {
     const qty = Number(quantityOverride ?? med.defaultQuantity) || 1;
     const entry = {
@@ -947,7 +1018,12 @@ export function AppProvider({ children }) {
       takenAt: Date.now(),
     };
     setMedsTakenToday((prev) => [...prev, entry]);
-    showSnack(`Took ${qty} ${med.unit || ""} ${med.name}`.trim());
+    showSnack(`Took ${qty} ${med.unit || ""} ${med.name}`.trim(), {
+      undo: () => {
+        setMedsTakenToday((prev) => prev.filter((d) => d.id !== entry.id));
+        showSnack("Undone");
+      },
+    });
   }
   function unlogDose(doseId) {
     setMedsTakenToday((prev) => prev.filter((d) => d.id !== doseId));
@@ -1232,7 +1308,7 @@ export function AppProvider({ children }) {
     cheats, addCheat, removeCheat, cheatSurplus, cheatBaselineKcal,
     saveCustomPreset, deleteCustomPreset,
     coffeeLog, addCoffeeEntry, removeCoffeeEntry, toggleCoffeeSchedule,
-    steps, setSteps, stepAdjustKcal,
+    steps, setSteps, bumpSteps, stepAdjustKcal,
     waterLog, addWaterEntry, removeWaterEntry,
     sleep, setSleepEntry, clearSleep,
     customTasks, addCustomTask, toggleCustomTask, removeCustomTask,

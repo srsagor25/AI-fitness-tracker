@@ -75,6 +75,7 @@ export function Dashboard({ setTab }) {
     addWaterEntry,
     addCoffeeEntry,
     setSteps,
+    bumpSteps,
     addMeasurement,
     sleep,
     setSleepEntry,
@@ -635,7 +636,7 @@ export function Dashboard({ setTab }) {
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      setSteps(steps + 1000);
+                      bumpSteps(1000);
                     }}
                     className="font-mono text-[10px] uppercase tracking-[0.2em] border-2 border-ink px-2 py-1 hover:bg-ink hover:text-paper"
                     title="Add 1000 steps"

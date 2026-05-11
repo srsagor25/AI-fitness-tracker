@@ -138,8 +138,19 @@ export function Layout({ tab, subTab, setTab, setSubTab, children }) {
       </nav>
 
       {snackbar && (
-        <div className="fixed bottom-20 md:bottom-4 left-1/2 -translate-x-1/2 z-50 bg-ink text-paper px-4 py-2 font-mono text-[10px] uppercase tracking-[0.25em] shadow-lg border-2 border-ink whitespace-nowrap max-w-[90vw] truncate">
-          {snackbar.msg}
+        <div className="fixed bottom-20 md:bottom-4 left-1/2 -translate-x-1/2 z-50 bg-ink text-paper px-4 py-2 font-mono text-[10px] uppercase tracking-[0.25em] shadow-lg border-2 border-ink max-w-[90vw] flex items-center gap-3">
+          <span className="truncate">{snackbar.msg}</span>
+          {snackbar.undo && (
+            <button
+              type="button"
+              onClick={() => {
+                try { snackbar.undo(); } catch { /* ignore */ }
+              }}
+              className="ml-1 border-2 border-paper px-2 py-0.5 hover:bg-paper hover:text-ink shrink-0"
+            >
+              Undo
+            </button>
+          )}
         </div>
       )}
     </div>

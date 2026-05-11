@@ -47,27 +47,15 @@ export function Grocery() {
   const [editing, setEditing] = useState(null);
   const [manualInput, setManualInput] = useState("");
 
-  // Global display mode for the inventory + auto-shopping. Persisted on
-  // the profile so it sticks across reloads. Three options:
-  //   - "conventional": ignore packets, show smart units (g↔kg, ml↔L) — DEFAULT
-  //   - "auto":         honor each item's trackByPackets toggle
-  //   - "packets":      force packet display where a packet size is set
-  //
-  // Packets only apply to fridge meat/seafood (chicken, beef, fish, …).
-  // Other items always render conventionally regardless of view.
-  const inventoryView = profile.inventoryView || "conventional";
-  const setInventoryView = (v) => updateProfile({ inventoryView: v });
-
   const bufferDays = Number(profile.groceryBufferDays) || 0;
 
-  // Decide the display mode for one item, applying the global override.
-  // Hard gate: packets are *only* shown for fridge meat/seafood items.
-  // Everything else falls back to conventional units no matter what.
+  // Packet view is hard-gated to meat/seafood items with track-by-packets
+  // turned on. No global toggle — every other item renders in plain
+  // conventional units. The user controls behaviour per-item from the
+  // edit modal.
   function showAsPackets(it) {
     if (!isPacketEligibleItem(it)) return false;
     const ps = Number(it.packetSize) || 0;
-    if (inventoryView === "conventional") return false;
-    if (inventoryView === "packets") return ps > 1;
     return !!it.trackByPackets && ps > 1;
   }
 
@@ -194,30 +182,10 @@ export function Grocery() {
           ))}
         </div>
 
-        {/* Global display mode — flips the whole list between packet view
-            and conventional units (g↔kg, ml↔L). "Auto" honors each item's
-            own track-by-packets toggle. */}
-        <div className="border-2 border-ink p-2 mb-4 flex items-center gap-2 flex-wrap text-[10px] font-mono uppercase tracking-[0.25em]">
-          <span className="text-ink-muted">Display:</span>
-          {[
-            { id: "auto", label: "Per-item", hint: "Use each item's own toggle" },
-            { id: "packets", label: "Packets", hint: "Show packs where set" },
-            { id: "conventional", label: "Conventional", hint: "g↔kg, ml↔L" },
-          ].map((m) => (
-            <button
-              key={m.id}
-              onClick={() => setInventoryView(m.id)}
-              title={m.hint}
-              className={`px-2.5 py-1 border-2 ${
-                inventoryView === m.id
-                  ? "bg-ink text-paper border-ink"
-                  : "border-ink hover:bg-ink hover:text-paper"
-              }`}
-            >
-              {m.label}
-            </button>
-          ))}
-        </div>
+        {/* Display mode is now per-item: meat/seafood items with
+            "Track by packets" enabled render in packs, everything else
+            shows plain conventional units. Removed the old global
+            Per-item / Packets / Conventional toggle. */}
 
         {lowStock.length > 0 && (
           <div className="border-2 border-accent bg-accent/5 px-3 py-2 mb-4 flex items-start gap-2">
@@ -758,8 +726,8 @@ function ItemModal({ item, onClose, onSave, profile, updateProfile }) {
                 />
               </Field>
               <Field
-                label="Restock size (optional)"
-                hint={`How much one tap of "Restock" adds (${draft.unit}). Leave blank to skip.`}
+                label="Buy in multiples of"
+                hint={`The quantity you typically buy at a time (e.g. sauce in 500 ${draft.unit}). One tap of Restock adds this much.`}
               >
                 <TextInput
                   type="number"
