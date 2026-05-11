@@ -280,7 +280,9 @@ export function Grocery() {
                                   {" · "}low at {fmtThresh.text}
                                 </>
                               ) : (
-                                <>Threshold {fmtThresh.text}{ps > 1 ? ` · Packet ${fmtPack.text}` : ""}</>
+                                // Non-meat items: plain conventional line, no
+                                // "Packet" reference even if a packetSize is set.
+                                <>Threshold {fmtThresh.text}</>
                               )}
                               {it.perishable && ` · keep ≤ ${it.maxDays || 7} days`}
                             </div>
@@ -344,8 +346,8 @@ export function Grocery() {
                           </IconButton>
                           <IconButton
                             onClick={() => restockGrocery(it.key)}
-                            aria-label="Restock one packet"
-                            title="Add one packet"
+                            aria-label={packetMode ? "Restock one pack" : `Restock +${fmtPack.text}`}
+                            title={packetMode ? `Add one pack (${fmtPack.text})` : `Restock +${fmtPack.text}`}
                           >
                             <PackagePlus size={14} />
                           </IconButton>
@@ -462,6 +464,14 @@ export function Grocery() {
                                       (it.qty / psNum) % 1 === 0 ? 0 : 1,
                                     )} pack${(it.qty / psNum) === 1 ? "" : "s"} (${haveFmt.text})`
                                   : `Have ${haveFmt.text}`;
+                                // For meat / seafood we keep the "Buy N
+                                // packs" phrasing because that's how they're
+                                // physically bought. Everything else gets a
+                                // plain "Buy ~X kg" / "Buy ~12 pc" line —
+                                // no "packet" word.
+                                const buyStr = showPack
+                                  ? `Buy ${packets} pack${packets === 1 ? "" : "s"} (${packFmt.text} each)`
+                                  : `Buy ~${formatQty(packets * psNum, it.unit).text}`;
                                 return (
                                   <>
                                     {haveStr}
@@ -472,7 +482,7 @@ export function Grocery() {
                                         {daysLeftDisplay}
                                       </>
                                     )}
-                                    {" · "}Buy {packets} pack{packets === 1 ? "" : "s"} ({packFmt.text} each)
+                                    {" · "}{buyStr}
                                     {it.perishable && " · top up only"}
                                   </>
                                 );
@@ -747,7 +757,10 @@ function ItemModal({ item, onClose, onSave, profile, updateProfile }) {
                   onChange={(e) => setDraft({ ...draft, qty: Math.max(0, Number(e.target.value) || 0) })}
                 />
               </Field>
-              <Field label="Packet size (optional)" hint="Used by 'Restock' to add one pack at a time.">
+              <Field
+                label="Restock size (optional)"
+                hint={`How much one tap of "Restock" adds (${draft.unit}). Leave blank to skip.`}
+              >
                 <TextInput
                   type="number"
                   value={draft.packetSize}
