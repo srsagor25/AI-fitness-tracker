@@ -774,6 +774,20 @@ export function Dashboard({ setTab }) {
         )}
       </Card>
 
+      {/* One-tap entries — moved directly under the Reminders card so the
+          two main "log something now" surfaces sit together. */}
+      <QuickLog
+        addWaterEntry={addWaterEntry}
+        addCoffeeEntry={addCoffeeEntry}
+        steps={steps}
+        setSteps={setSteps}
+        addMeasurement={addMeasurement}
+        sleep={sleep}
+        setSleepEntry={setSleepEntry}
+        latestWeight={profile.stats?.weightKg}
+        setTab={setTab}
+      />
+
       {/* Goal-aware burn suggestion. Only visible when there's a real gap. */}
       {burnSuggestion && burnSuggestion.gap > 0 && (
         <Card>
@@ -814,18 +828,6 @@ export function Dashboard({ setTab }) {
       )}
 
       <StreakStrip streaks={streaks} />
-
-      <QuickLog
-        addWaterEntry={addWaterEntry}
-        addCoffeeEntry={addCoffeeEntry}
-        steps={steps}
-        setSteps={setSteps}
-        addMeasurement={addMeasurement}
-        sleep={sleep}
-        setSleepEntry={setSleepEntry}
-        latestWeight={profile.stats?.weightKg}
-        setTab={setTab}
-      />
 
       <Card>
         <CardHeader
