@@ -4,7 +4,8 @@ import { Card, CardHeader, Stat } from "../components/ui/Card.jsx";
 import { Button, IconButton } from "../components/ui/Button.jsx";
 import { Field, TextInput, Select, Chip } from "../components/ui/Field.jsx";
 import { Modal } from "../components/ui/Modal.jsx";
-import { GROCERY_CATEGORIES } from "../store/profiles.js";
+import { GROCERY_CATEGORIES, planNeeds } from "../store/profiles.js";
+import { todayKey } from "../lib/time.js";
 import { getAllUnits, isContinuousUnit, defaultStep, formatQty, isPacketEligibleItem } from "../lib/units.js";
 import {
   Plus,
@@ -41,11 +42,14 @@ export function Grocery() {
     groceryActivity,
     profile,
     updateProfile,
+    plan,
+    markBought,
   } = useApp();
 
   const [view, setView] = useState("inventory");
   const [editing, setEditing] = useState(null);
   const [manualInput, setManualInput] = useState("");
+  const [showCatalog, setShowCatalog] = useState(false);
 
   const bufferDays = Number(profile.groceryBufferDays) || 0;
 
@@ -107,6 +111,42 @@ export function Grocery() {
     });
   }, [grocery, consumption, bufferDays]);
 
+  // Plan-derived needs: sum of every ingredient required by the next
+  // 7 days of the user's meal plan, minus what's already in inventory.
+  // Items that aren't in inventory at all show up here with their full
+  // need — they appear on the shopping list with metadata pulled from
+  // the profile's groceryTemplate catalog when the user taps "Bought".
+  const planShopping = useMemo(() => {
+    const days = [];
+    const cursor = new Date();
+    cursor.setHours(0, 0, 0, 0);
+    for (let i = 0; i < 7; i++) {
+      days.push(todayKey(cursor));
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    const needs = planNeeds(plan || {}, profile || {}, days);
+    const out = [];
+    for (const key of Object.keys(needs)) {
+      const need = needs[key];
+      const existing = grocery.find((it) => it.key === key);
+      const have = existing ? Number(existing.qty) || 0 : 0;
+      const deficit = need - have;
+      if (deficit <= 0) continue;
+      const catalog = (profile.groceryTemplate || []).find((it) => it.key === key);
+      const meta = existing || catalog;
+      if (!meta) continue; // unknown item — skip silently
+      out.push({
+        key,
+        item: meta,
+        existing: !!existing,
+        need: Math.round(need),
+        have: Math.round(have),
+        deficit: Math.round(deficit),
+      });
+    }
+    return out;
+  }, [plan, profile, grocery]);
+
   const autoShopping = forecasts.filter((f) => f.inAutoShopping);
   const lowStock = grocery.filter((it) => it.qty <= it.lowThreshold);
 
@@ -128,9 +168,17 @@ export function Grocery() {
           title="Grocery & Inventory"
           subtitle={`${grocery.length} items · ${lowStock.length} low`}
           right={
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               <Button
                 variant="primary"
+                size="sm"
+                onClick={() => setShowCatalog(true)}
+                title="Pick items from your profile's catalog with starting quantities"
+              >
+                <PackagePlus size={12} /> From catalog
+              </Button>
+              <Button
+                variant="outline"
                 size="sm"
                 onClick={() =>
                   setEditing({
@@ -147,7 +195,7 @@ export function Grocery() {
                   })
                 }
               >
-                <Plus size={12} /> Add
+                <Plus size={12} /> Add new
               </Button>
               <Button
                 variant="outline"
@@ -369,12 +417,69 @@ export function Grocery() {
               </div>
             </div>
 
-            {autoShopping.length === 0 ? (
+            {/* Plan-driven shopping list — derived from the meals you've
+                planned for the next 7 days. Shows up even when inventory
+                is empty (the catalog supplies the metadata). */}
+            {planShopping.length > 0 && (
+              <div className="mb-4">
+                <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted mb-2">
+                  From your meal plan (next 7 days)
+                </div>
+                <ul className="divide-y divide-ink/30 border-y border-ink/30">
+                  {planShopping.map((p) => {
+                    const it = p.item;
+                    const ps = Math.max(1, Number(it.packetSize) || 1);
+                    // Round up to the next "buy multiple" (packet size)
+                    // so the user buys what they actually need to cover
+                    // the plan deficit.
+                    const buyQty = Math.ceil(p.deficit / ps) * ps;
+                    const haveFmt = formatQty(p.have, it.unit);
+                    const needFmt = formatQty(p.need, it.unit);
+                    const buyFmt = formatQty(buyQty, it.unit);
+                    return (
+                      <li
+                        key={p.key}
+                        className="py-2 flex flex-col md:flex-row md:items-center gap-2 md:gap-3"
+                      >
+                        <div className="flex items-start gap-3 flex-1 min-w-0">
+                          <span className="text-2xl shrink-0">{it.icon || "🛒"}</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="font-body text-base flex items-center gap-2 flex-wrap">
+                              <span className="break-words">{it.name}</span>
+                              {!p.existing && <Chip color="#3b6aa3">New</Chip>}
+                              <Chip color="#c44827">Plan need</Chip>
+                            </div>
+                            <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted">
+                              Need {needFmt.text} · have {haveFmt.text} · buy ~{buyFmt.text}
+                            </div>
+                          </div>
+                        </div>
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          className="shrink-0 self-end md:self-center"
+                          onClick={() => markBought(p.key, buyQty)}
+                        >
+                          Bought
+                        </Button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+
+            {autoShopping.length === 0 && planShopping.length === 0 ? (
               <p className="font-body italic text-ink-muted">
-                Nothing predicted to run out within {bufferDays} day
-                {bufferDays === 1 ? "" : "s"} — pantry's good.
+                Nothing on the list — plan some meals or wait for stock to dip below threshold.
               </p>
-            ) : (
+            ) : autoShopping.length === 0 ? null : (
+              <div>
+                {planShopping.length > 0 && (
+                  <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted mb-2">
+                    Low / projected to run out
+                  </div>
+                )}
               <ul className="divide-y divide-ink/30 border-y border-ink/30">
                 {autoShopping
                   .slice()
@@ -470,6 +575,7 @@ export function Grocery() {
                     );
                   })}
               </ul>
+              </div>
             )}
           </div>
         ) : (
@@ -541,7 +647,97 @@ export function Grocery() {
           }}
         />
       )}
+
+      {showCatalog && (
+        <CatalogPickerModal
+          catalog={profile.groceryTemplate || []}
+          grocery={grocery}
+          onClose={() => setShowCatalog(false)}
+          onAdd={(key, qty) => markBought(key, qty)}
+        />
+      )}
     </>
+  );
+}
+
+// CatalogPickerModal — quick way to stock up the inventory by hand.
+// Lists every item in the profile catalog that's NOT yet in the user's
+// grocery, with a qty input + "Add" button per row. Calls onAdd(key, qty)
+// which routes through markBought so the item appears in inventory and
+// activity gets logged.
+function CatalogPickerModal({ catalog, grocery, onClose, onAdd }) {
+  const inventoryKeys = useMemo(() => new Set(grocery.map((g) => g.key)), [grocery]);
+  // Only show what isn't already in the inventory; once added, the row
+  // disappears (re-renders against the updated grocery prop).
+  const candidates = useMemo(
+    () => catalog.filter((c) => !inventoryKeys.has(c.key)),
+    [catalog, inventoryKeys],
+  );
+  const [qtys, setQtys] = useState(() => {
+    const out = {};
+    for (const c of catalog) out[c.key] = c.initialQty || c.packetSize || 1;
+    return out;
+  });
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Stock up from catalog"
+      maxWidth="max-w-2xl"
+      footer={
+        <Button variant="outline" onClick={onClose}>Done</Button>
+      }
+    >
+      <p className="font-body text-sm italic text-ink-muted mb-3">
+        Items in your profile catalog that you don't have in inventory yet. Set a quantity and tap Add.
+        Anything not listed here is already in your inventory — adjust those rows directly on the main page.
+      </p>
+      {candidates.length === 0 ? (
+        <p className="font-body italic text-ink-muted">
+          Every catalog item is already in your inventory. Use <strong>+ Add new</strong> to define a brand-new item.
+        </p>
+      ) : (
+        <ul className="divide-y divide-ink/30 border-y border-ink/30">
+          {candidates.map((c) => (
+            <li key={c.key} className="py-2 flex flex-col md:flex-row md:items-center gap-2 md:gap-3">
+              <div className="flex items-start gap-3 flex-1 min-w-0">
+                <span className="text-2xl shrink-0">{c.icon || "🛒"}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="font-body text-base break-words">{c.name}</div>
+                  <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted">
+                    {c.category} · multiples of {c.packetSize || 1}{c.unit}
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-1 shrink-0 self-end md:self-center">
+                <input
+                  type="number"
+                  value={qtys[c.key] ?? c.packetSize ?? 1}
+                  onChange={(e) =>
+                    setQtys((p) => ({ ...p, [c.key]: Math.max(0, Number(e.target.value) || 0) }))
+                  }
+                  className="w-20 border-2 border-ink bg-paper px-2 py-1 font-display text-base text-center"
+                />
+                <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-ink-muted">
+                  {c.unit}
+                </span>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => {
+                    const q = qtys[c.key] ?? c.packetSize ?? 1;
+                    if (q > 0) onAdd(c.key, q);
+                  }}
+                >
+                  Add
+                </Button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Modal>
   );
 }
 

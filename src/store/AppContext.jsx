@@ -1227,6 +1227,36 @@ export function AppProvider({ children }) {
     });
     showSnack("Restocked");
   }
+
+  // "Bought" action from auto-shopping. Works for items already in
+  // inventory AND for items that only exist in the profile catalog
+  // (groceryTemplate). The latter is used by plan-driven shopping where
+  // an item appears on the list because the user planned a meal that
+  // needs it, even though they don't have any yet.
+  function markBought(key, qty) {
+    const add = Math.max(0, Number(qty) || 0);
+    if (!add) return;
+    setGrocery((prev) => {
+      const idx = prev.findIndex((x) => x.key === key);
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = { ...next[idx], qty: next[idx].qty + add };
+        return next;
+      }
+      // Look up catalog metadata. If the user has a custom item key that
+      // isn't in the template, fall back to a minimal record.
+      const catalog = (profile.groceryTemplate || []).find((x) => x.key === key);
+      const fresh = catalog
+        ? { ...catalog, qty: add }
+        : { key, name: key, category: "Pantry", unit: "pc", packetSize: 1, lowThreshold: 0, qty: add, icon: "🛒" };
+      return [...prev, fresh];
+    });
+    const display = (profile.groceryTemplate || []).find((x) => x.key === key);
+    logGroceryActivity([
+      { key, name: display?.name || key, unit: display?.unit || "", delta: add, reason: "restock" },
+    ]);
+    showSnack(`Bought ${add}${display?.unit || ""} ${display?.name || key}`);
+  }
   function setGroceryQty(key, qty) {
     setGrocery((prev) => {
       const it = prev.find((x) => x.key === key);
@@ -1334,7 +1364,7 @@ export function AppProvider({ children }) {
     saveSport, deleteSport, todaysSportsKcal, todaysStepsKcal, todaysActivityKcal,
     burnSuggestion,
     // grocery
-    grocery, adjustGrocery, restockGrocery, setGroceryQty,
+    grocery, adjustGrocery, restockGrocery, setGroceryQty, markBought,
     saveGroceryItem, removeGroceryItem, resetGroceryToTemplate,
     groceryActivity, clearGroceryActivity,
     manualShopping, addManualShopping, toggleManualShopping, removeManualShopping,
