@@ -13,6 +13,7 @@ import {
 } from "../lib/calories.js";
 import { suggestionsForDay } from "../lib/coach.js";
 import { getDailySuggestions } from "../lib/dailyCoach.js";
+import { estimateSportKcal } from "../store/sports.js";
 import {
   Play,
   Pause,
@@ -162,6 +163,14 @@ function daysSinceLast(history, dayId) {
   return Math.floor((Date.now() - last.date) / 86400000);
 }
 
+function daysSinceLastSport(sportsLog, sportId) {
+  if (!Array.isArray(sportsLog) || !sportId) return Infinity;
+  // sportsLog is stored newest-first by addSportSession.
+  const last = sportsLog.find((s) => s.sportId === sportId);
+  if (!last) return Infinity;
+  return Math.floor((Date.now() - new Date(last.date).getTime()) / 86400000);
+}
+
 // Coach uses workout history + today's diet + last night's sleep + recent
 // weight trend to give a personalised note. Returns the highest-priority
 // tip; if nothing flags, falls back to recovery-based guidance.
@@ -173,8 +182,26 @@ function coachNote({
   calorieTarget,
   sleep,
   weightTrend14d, // { delta, weighIns } or null
+  scheduledSport, // sport object when today is a sports day, else null
 }) {
-  // Rest day suggestions (no scheduled training)
+  // Sports day (no scheduled training, but a sport is scheduled)
+  if (!hasDay && scheduledSport) {
+    if (sleep?.hours != null && sleep.hours < 5.5) {
+      return `Only ${sleep.hours.toFixed(1)}h sleep — keep ${scheduledSport.name.toLowerCase()} pace moderate, save the sprints for next week.`;
+    }
+    if (calorieTarget && caloriesEaten < calorieTarget - 600 && goalKey !== "cut") {
+      return `Under-fuelled today — eat a real meal 60–90 min before ${scheduledSport.name.toLowerCase()} so you don't gas mid-game.`;
+    }
+    if (goalKey === "cut") {
+      return `${scheduledSport.name} day on a cut — keep intensity high, hit your protein post-game, no extra cheat calories.`;
+    }
+    if (goalKey === "muscle_build" || goalKey === "bulk") {
+      return `${scheduledSport.name} day — bring carbs (200–300 g rice / oats / fruit pre-game) to keep training the day after strong.`;
+    }
+    return `${scheduledSport.name} day — log the session on Activity → Sports when you finish so burn + history stay in sync.`;
+  }
+
+  // Rest day suggestions (no scheduled training, no scheduled sport)
   if (!hasDay) {
     if (goalKey === "muscle_build" || goalKey === "bulk") {
       return "Rest fully — eat the surplus, sleep ≥7h. Light walking is plenty.";
@@ -258,6 +285,11 @@ export function Workout() {
     sleep,
     weightLog,
     sportsList,
+    todaysScheduledSport,
+    sportsLog,
+    todaysSportsKcal,
+    effectiveStepGoal,
+    sportsStepCredit,
   } = useApp();
   // When the user cycles a day chip to "Sports & Others" we pop a modal
   // so they can pick which specific sport that day represents.
@@ -387,13 +419,34 @@ export function Workout() {
   const estDuration = estimateMinutes(selectedDay);
 
   // Coaching context — used by the Coach card and per-exercise prescriptions.
+  // Three day modes feed this:
+  //   workout day → expectedKcal from program-day prescription
+  //   sports day  → expectedSports from scheduled sport (60 min × MET)
+  //   rest        → both zero, just step target
   const goalKey = profile.goalKey || "maintain";
   const goalTuning = GOAL_TUNING[goalKey] || GOAL_TUNING.maintain;
   const userWeightKg = profile.stats?.weightKg || 70;
   const expectedKcal = expectedTrainingKcal({ day: selectedDay, weightKg: userWeightKg });
-  const expectedSteps = stepsToKcal(profile.stepAdjust?.baseline || 10000, userWeightKg);
-  const totalBurnTarget = expectedKcal + expectedSteps;
-  const dayRecovery = selectedDay ? daysSinceLast(history, selectedDay.id) : Infinity;
+  const expectedSports = todaysScheduledSport
+    ? estimateSportKcal({
+        met: todaysScheduledSport.met,
+        weightKg: userWeightKg,
+        durationMin: 60,
+        intensity: "moderate",
+      })
+    : 0;
+  // effectiveStepGoal already subtracts today's logged-sports credit
+  // so a sports day doesn't double-count step kcal against itself.
+  const expectedSteps = stepsToKcal(effectiveStepGoal, userWeightKg);
+  const totalBurnTarget = expectedKcal + expectedSports + expectedSteps;
+
+  // Recovery context — workout days look at program-day history; sports
+  // days look at the last logged session of THIS sport.
+  const dayRecovery = selectedDay
+    ? daysSinceLast(history, selectedDay.id)
+    : todaysScheduledSport
+      ? daysSinceLastSport(sportsLog, todaysScheduledSport.id)
+      : Infinity;
 
   // 14-day weight trend (uses Progress measurements). Returns delta kg from
   // first to last weigh-in inside the window so the coach can flag plateaus
@@ -414,19 +467,26 @@ export function Workout() {
   return (
     <>
       {/* Coach — goal-aware overview of today's session, recovery, and what
-          intensity / overload approach to use. */}
+          intensity / overload approach to use. Recognises three day
+          modes: workout (program day), sports (scheduled sport from the
+          week chip), or rest. Burn target stacks workout + sports +
+          (effective) steps so the right activities show up. */}
       <Card>
         <CardHeader
           kicker="Coach"
           title={
             selectedDay
               ? `${goalTuning.label} · ${selectedDay.name}`
-              : `${goalTuning.label} · Rest day`
+              : todaysScheduledSport
+                ? `${goalTuning.label} · ${todaysScheduledSport.icon || "⚽"} ${todaysScheduledSport.name}`
+                : `${goalTuning.label} · Rest day`
           }
           subtitle={
             selectedDay
               ? `${selectedDay.exercises.length} exercises · ~${estDuration} min · ${goalTuning.intensityCue}`
-              : "Recovery day. Walk, hydrate, eat target calories."
+              : todaysScheduledSport
+                ? `Sports day · ~60 min ${todaysScheduledSport.name.toLowerCase()} · log on Activity → Sports`
+                : "Recovery day. Walk, hydrate, eat target calories."
           }
           right={
             <Chip color="#c44827">
@@ -441,16 +501,25 @@ export function Workout() {
             suffix="kcal"
             accent="#4a6b3e"
           />
-          <Stat
-            label="From training"
-            value={`~${expectedKcal}`}
-            suffix="kcal"
-            accent="#3b6aa3"
-          />
+          {todaysScheduledSport ? (
+            <Stat
+              label={`From ${todaysScheduledSport.name}`}
+              value={`~${expectedSports}`}
+              suffix="kcal"
+              accent="#d97a2c"
+            />
+          ) : (
+            <Stat
+              label="From training"
+              value={`~${expectedKcal}`}
+              suffix="kcal"
+              accent="#3b6aa3"
+            />
+          )}
           <Stat
             label="From steps"
             value={`~${expectedSteps}`}
-            suffix="kcal"
+            suffix={sportsStepCredit > 0 ? `kcal · goal ${effectiveStepGoal.toLocaleString()}` : "kcal"}
             accent="#6b5a3e"
           />
           <Stat
@@ -485,6 +554,7 @@ export function Workout() {
                 calorieTarget: dailyTargetKcal,
                 sleep,
                 weightTrend14d,
+                scheduledSport: todaysScheduledSport,
               })}
             </p>
             <div className="flex flex-wrap gap-1.5 mt-2">
