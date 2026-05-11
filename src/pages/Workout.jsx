@@ -11,6 +11,7 @@ import {
   expectedTrainingKcal,
   stepsToKcal,
 } from "../lib/calories.js";
+import { suggestionsForDay } from "../lib/coach.js";
 import {
   Play,
   Pause,
@@ -491,6 +492,8 @@ export function Workout() {
           </div>
         </div>
       </Card>
+
+      <CoachPeriodisationCard day={selectedDay} history={history} />
 
       {/* Training kcal today — workout sessions only. Steps now have their
           own Activity → Steps tab; Sports go to Activity → Sports. */}
@@ -1191,5 +1194,106 @@ function StepsChart({ entries, baseline }) {
         })}
       </text>
     </svg>
+  );
+}
+
+// ============================================================================
+// CoachPeriodisationCard — auto-generated variation suggestions for today's
+// program day, based on the user's recent set history. Three kinds of
+// nudges (variation swap when stalling, +1 set when progressing within
+// the 60-min budget, +load when over budget). Hides itself when there
+// are no suggestions.
+// ============================================================================
+
+function CoachPeriodisationCard({ day, history }) {
+  const items = useMemo(
+    () => suggestionsForDay(day, history || [], { budgetMinutes: 60, max: 4 }),
+    [day, history],
+  );
+  if (!day || items.length === 0) return null;
+
+  return (
+    <Card>
+      <CardHeader
+        kicker="Coach · Periodisation"
+        title="Variation & progression"
+        subtitle="Auto-generated from your last few sessions on each lift. Stays inside the 60-minute session budget."
+      />
+      <ul className="space-y-3">
+        {items.map((it, i) => {
+          if (it.kind === "variation") {
+            return (
+              <li
+                key={i}
+                className="border-2 border-ink p-3"
+                style={{ borderLeftColor: "#d97a2c", borderLeftWidth: 6 }}
+              >
+                <div className="flex items-baseline gap-2 flex-wrap">
+                  <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted">
+                    Stall · try a variation
+                  </span>
+                </div>
+                <div className="font-display text-lg font-bold mt-1 break-words">
+                  {it.exercise.name}{" "}
+                  <span className="text-ink-muted text-base font-normal italic">
+                    → {it.options.slice(0, 2).join(" or ")}
+                  </span>
+                </div>
+                <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted mt-1">
+                  {it.reason}. Swap manually in <strong>Programs → Edit</strong>.
+                </div>
+              </li>
+            );
+          }
+          if (it.kind === "bump-set") {
+            return (
+              <li
+                key={i}
+                className="border-2 border-ink p-3"
+                style={{ borderLeftColor: "#4a6b3e", borderLeftWidth: 6 }}
+              >
+                <div className="flex items-baseline gap-2 flex-wrap">
+                  <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted">
+                    Progressing · bump volume
+                  </span>
+                </div>
+                <div className="font-display text-lg font-bold mt-1 break-words">
+                  {it.exercise.name}{" "}
+                  <span className="text-ink-muted text-base font-normal italic">
+                    → {it.exercise.sets} → {it.toSets} sets
+                  </span>
+                </div>
+                <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted mt-1">
+                  Fits inside ~{it.projectedMinutes} min. Bump it in <strong>Programs → Edit</strong>.
+                </div>
+              </li>
+            );
+          }
+          // bump-weight
+          return (
+            <li
+              key={i}
+              className="border-2 border-ink p-3"
+              style={{ borderLeftColor: "#3b6aa3", borderLeftWidth: 6 }}
+            >
+              <div className="flex items-baseline gap-2 flex-wrap">
+                <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted">
+                  Progressing · bump load
+                </span>
+              </div>
+              <div className="font-display text-lg font-bold mt-1 break-words">
+                {it.exercise.name}{" "}
+                <span className="text-ink-muted text-base font-normal italic">
+                  → +2.5 kg next session
+                </span>
+              </div>
+              <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted mt-1">
+                {it.reason}. Session is already at 60-min budget — push the weight, keep the set count.
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </Card>
   );
 }

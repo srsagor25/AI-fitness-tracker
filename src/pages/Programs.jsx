@@ -5,6 +5,7 @@ import { Button, IconButton } from "../components/ui/Button.jsx";
 import { Field, TextInput, Select, Chip } from "../components/ui/Field.jsx";
 import { Modal } from "../components/ui/Modal.jsx";
 import { DAYS_SHORT } from "../lib/time.js";
+import { estimateMinutesForDay } from "../lib/calories.js";
 import { Plus, Trash2, Edit3, Copy, Check, Youtube } from "lucide-react";
 
 const ACCENT_PALETTE = ["#c44827", "#3b6aa3", "#4a6b3e", "#6b5a3e", "#2a2419"];
@@ -117,15 +118,19 @@ export function Programs() {
                     <p className="font-body text-base text-ink-muted italic">{p.subtitle}</p>
                   )}
                   <div className="flex gap-1.5 mt-2 flex-wrap">
-                    {p.days.map((d) => (
-                      <span
-                        key={d.id}
-                        className="font-mono text-[9px] uppercase tracking-[0.2em] px-2 py-0.5 text-paper"
-                        style={{ backgroundColor: d.accent }}
-                      >
-                        {d.name}
-                      </span>
-                    ))}
+                    {p.days.map((d) => {
+                      const mins = estimateMinutesForDay(d);
+                      return (
+                        <span
+                          key={d.id}
+                          className="font-mono text-[9px] uppercase tracking-[0.2em] px-2 py-0.5 text-paper"
+                          style={{ backgroundColor: d.accent }}
+                          title={`${mins} min · ${d.exercises.length} ex`}
+                        >
+                          {d.name} · {mins}m
+                        </span>
+                      );
+                    })}
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
