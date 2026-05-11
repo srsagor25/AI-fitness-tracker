@@ -12,6 +12,7 @@ import {
   stepsToKcal,
 } from "../lib/calories.js";
 import { suggestionsForDay } from "../lib/coach.js";
+import { getDailySuggestions } from "../lib/dailyCoach.js";
 import {
   Play,
   Pause,
@@ -523,6 +524,7 @@ export function Workout() {
         </div>
       </Card>
 
+      <RealTimeCoachCard />
       <CoachPeriodisationCard day={selectedDay} history={history} />
 
       {/* Training kcal today — workout sessions only. Steps now have their
@@ -1282,6 +1284,128 @@ function StepsChart({ entries, baseline }) {
         })}
       </text>
     </svg>
+  );
+}
+
+// ============================================================================
+// RealTimeCoachCard — context-aware suggestions that aggregate today's
+// workout + sports + steps + diet + sleep state and tell the user the
+// single most useful thing they could do right now. Ranks by priority
+// (urgent → routine), caps at 6 items. Hides itself when no signal.
+// ============================================================================
+
+function RealTimeCoachCard() {
+  const {
+    now,
+    dayType,
+    manualDayTypeId,
+    todaysDay,
+    todaysScheduledSport,
+    currentSession,
+    history: workoutHistory,
+    sportsLog,
+    steps,
+    effectiveStepGoal,
+    baseStepGoal,
+    sportsStepCredit,
+    dayTotals,
+    dailyTargetKcal,
+    todaysActivityKcal,
+    sleep,
+    profile,
+    streaks,
+  } = useApp();
+
+  const items = useMemo(
+    () =>
+      getDailySuggestions({
+        now,
+        dayType,
+        manualDayTypeId,
+        todaysDay,
+        todaysScheduledSport,
+        currentSession,
+        workoutHistory,
+        sportsLog,
+        steps,
+        effectiveStepGoal,
+        baseStepGoal,
+        sportsStepCredit,
+        dayTotals,
+        dailyTargetKcal,
+        todaysActivityKcal,
+        sleep,
+        profile,
+        streaks,
+      }),
+    [
+      now,
+      dayType,
+      manualDayTypeId,
+      todaysDay,
+      todaysScheduledSport,
+      currentSession,
+      workoutHistory,
+      sportsLog,
+      steps,
+      effectiveStepGoal,
+      baseStepGoal,
+      sportsStepCredit,
+      dayTotals,
+      dailyTargetKcal,
+      todaysActivityKcal,
+      sleep,
+      profile,
+      streaks,
+    ],
+  );
+
+  if (items.length === 0) return null;
+
+  return (
+    <Card>
+      <CardHeader
+        kicker="Coach · Real-time"
+        title="What to do right now"
+        subtitle="Combines today's workout, sports, steps, diet, sleep and schedule into a single priority list. Refreshes as you log."
+      />
+      <ul className="space-y-2">
+        {items.map((s) => (
+          <li
+            key={s.id}
+            className="border-2 border-ink p-3 flex items-start gap-3"
+            style={{ borderLeftColor: s.color, borderLeftWidth: 6 }}
+          >
+            <span className="text-2xl shrink-0">{s.icon}</span>
+            <div className="flex-1 min-w-0">
+              <div className="font-display text-base font-bold break-words">
+                {s.title}
+              </div>
+              <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted mt-1">
+                {s.detail}
+              </div>
+            </div>
+            {s.action && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="shrink-0 self-center"
+                onClick={() => {
+                  // Use the global hash navigation — keeps the existing
+                  // legacy-id behavior so "activity/sports" / "diet" etc.
+                  // both resolve.
+                  if (typeof window !== "undefined") {
+                    window.location.hash = s.action.tab;
+                  }
+                }}
+              >
+                {s.action.label}
+              </Button>
+            )}
+          </li>
+        ))}
+      </ul>
+    </Card>
   );
 }
 
