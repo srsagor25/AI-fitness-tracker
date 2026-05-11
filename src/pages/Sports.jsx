@@ -23,6 +23,7 @@ export function Sports() {
     saveSport,
     deleteSport,
     todaysSportsKcal,
+    todaysScheduledSport,
   } = useApp();
 
   const [logging, setLogging] = useState(null); // sport id or null
@@ -66,8 +67,44 @@ export function Sports() {
     return { totalMin, totalKcal, bySport, count: inWindow.length };
   }, [inWindow]);
 
+  // Has the user already logged a session of the scheduled sport today?
+  // Used to switch the banner from "Log it" to "Logged ✓".
+  const scheduledLoggedToday = !!(
+    todaysScheduledSport &&
+    todaysSessions.some((s) => s.sportId === todaysScheduledSport.id)
+  );
+
   return (
     <>
+      {/* Today's scheduled sport — comes from the Workout tab week chip
+          (Sports & Others slot). One-tap shortcut to log a session of
+          that sport so the same data flows into Activity history and
+          today's burn breakdown. */}
+      {todaysScheduledSport && (
+        <Card>
+          <CardHeader
+            kicker="Today's plan"
+            title={`${todaysScheduledSport.icon || "⚽"} ${todaysScheduledSport.name}${scheduledLoggedToday ? " · logged ✓" : ""}`}
+            subtitle={
+              scheduledLoggedToday
+                ? "You've already logged a session today — burn target on Today is satisfied."
+                : "From your workout schedule. Tap to log this session — it counts toward today's burn target."
+            }
+            right={
+              !scheduledLoggedToday && (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => setLogging(todaysScheduledSport.id)}
+                >
+                  <Plus size={12} /> Log session
+                </Button>
+              )
+            }
+          />
+        </Card>
+      )}
+
       <Card>
         <CardHeader
           kicker="Activity"

@@ -16,6 +16,7 @@ import {
   kcalToKg,
   expectedTrainingKcal,
 } from "../lib/calories.js";
+import { estimateSportKcal } from "../store/sports.js";
 import { formatMMSS, DAYS_LONG, dayOfWeek } from "../lib/time.js";
 import { FOODS } from "../store/profiles.js";
 import {
@@ -54,6 +55,7 @@ export function Dashboard({ setTab }) {
     todaysSportsKcal,
     todaysStepsKcal,
     todaysActivityKcal,
+    todaysScheduledSport,
     effectiveStepGoal,
     sportsStepCredit,
     baseStepGoal,
@@ -510,15 +512,29 @@ export function Dashboard({ setTab }) {
     return s + q;
   }, 0);
 
-  // Burn target — linked to today's scheduled program day (or rest) plus
-  // the user's step baseline. So a Push day with a 10k step baseline asks
-  // for ~training-kcal + ~step-kcal; a rest day asks for just step-kcal.
+  // Burn target — what we expect the user to burn today based on their
+  // schedule. Three sources combine:
+  //   workout day → expected program-day training kcal
+  //   sports day  → expected sports session kcal (60 min at the sport's MET)
+  //   any day     → effective step-goal kcal (already reduced by sports
+  //                 credit so sports days don't double-count step kcal)
   const goalKey = profile.goalKey || profile.goal || "maintain";
   const userWeightKg = profile.stats?.weightKg || 70;
-  const stepGoal = profile.stepAdjust?.baseline || 10000;
+  const stepGoal = effectiveStepGoal;
   const expectedTraining = expectedTrainingKcal({ day: todaysDay, weightKg: userWeightKg });
+  const expectedSports = todaysScheduledSport
+    ? estimateSportKcal({
+        met: todaysScheduledSport.met,
+        weightKg: userWeightKg,
+        durationMin: 60,
+        intensity: "moderate",
+      })
+    : 0;
   const expectedSteps = stepsToKcal(stepGoal, userWeightKg);
-  const burnTarget = Math.max(0, Math.round(expectedTraining + expectedSteps));
+  const burnTarget = Math.max(
+    0,
+    Math.round(expectedTraining + expectedSports + expectedSteps),
+  );
 
   const actualSteps = stepsToKcal(steps, userWeightKg);
   // burned = workouts + sports + steps. All three feed into the eating
@@ -875,7 +891,9 @@ export function Dashboard({ setTab }) {
           overEat={overEat}
           burnRemaining={burnRemaining}
           todaysDay={todaysDay}
+          todaysScheduledSport={todaysScheduledSport}
           expectedTraining={expectedTraining}
+          expectedSports={expectedSports}
           stepGoal={stepGoal}
           expectedSteps={expectedSteps}
         />
@@ -1333,7 +1351,9 @@ function EnergyHero({
   overEat,
   burnRemaining,
   todaysDay,
+  todaysScheduledSport,
   expectedTraining,
+  expectedSports,
   stepGoal,
   expectedSteps,
 }) {
@@ -1354,9 +1374,10 @@ function EnergyHero({
       ? `Base ${dayType?.label || "day"} ${baseDayTarget.toLocaleString()} + activity +${Math.round(activityBonus)} = ${eatTarget.toLocaleString()} kcal`
       : `${dayType?.label || "Today"} target ${eatTarget.toLocaleString()} kcal · activity will lift this`;
 
-  const burnDetails =
-    todaysDay
-      ? `Today: ${todaysDay.name} (~${expectedTraining} kcal) + ${stepGoal.toLocaleString()} steps target (~${expectedSteps} kcal)`
+  const burnDetails = todaysDay
+    ? `Today: ${todaysDay.name} (~${expectedTraining} kcal) + ${stepGoal.toLocaleString()} steps target (~${expectedSteps} kcal)`
+    : todaysScheduledSport
+      ? `Sports day: ${todaysScheduledSport.icon || ""} ${todaysScheduledSport.name} ~60 min (~${expectedSports} kcal) + ${stepGoal.toLocaleString()} steps target (~${expectedSteps} kcal)`
       : `Rest day: just ${stepGoal.toLocaleString()} step target (~${expectedSteps} kcal)`;
 
   // Real-time breakdown — these three numbers tick up as the user logs a
