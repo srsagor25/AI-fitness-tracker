@@ -145,14 +145,25 @@ export function Diet() {
           }
         />
 
-        {/* Day-type chips — auto-follow the workout schedule unless the
-            user explicitly taps. The footer caption shows which mode the
-            day is in so they can tell whether to trust it. */}
+        {/* Day-type chips — follow the workout schedule by default; the
+            highlighted chip just reflects today's scheduled day. Tapping
+            the auto-selected chip is a no-op (stays auto), tapping a
+            different chip overrides for today only — no button to click
+            to "enable" auto mode, that's just how it works. */}
         <div className="flex flex-wrap gap-2 mb-2">
           {dayTypes.map((dt) => (
             <button
               key={dt.id}
-              onClick={() => setDayTypeId(dt.id)}
+              onClick={() => {
+                // Tapping the chip that matches the auto-detected day
+                // clears any manual override → stays on auto. Tapping a
+                // different chip stores a manual choice for today only.
+                if (dt.id === autoDayTypeId) {
+                  setDayTypeId(null);
+                } else {
+                  setDayTypeId(dt.id);
+                }
+              }}
               className={`border-2 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.2em] flex items-center gap-1 ${
                 dayTypeId === dt.id ? "text-paper" : "text-ink hover:bg-ink/10"
               }`}
@@ -167,28 +178,23 @@ export function Diet() {
             </button>
           ))}
         </div>
-        <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted mb-4 flex items-center gap-2 flex-wrap">
+        <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-muted mb-4">
           {manualDayTypeId == null ? (
-            <>
-              <span>🤖 Auto-set from {activeProgram?.name || "your program"}{" "}
-                {todaysScheduledSport
-                  ? `· today is ${todaysScheduledSport.icon || ""} ${todaysScheduledSport.name} (sports day)`
-                  : todaysScheduledDay && todaysScheduledDay !== "rest"
-                    ? `· today is ${activeProgram?.days?.find((d) => d.id === todaysScheduledDay)?.name || "a training"} day`
-                    : "· today is a rest day"}
-              </span>
-            </>
+            <span>
+              {todaysScheduledSport
+                ? `Following workout schedule · today is ${todaysScheduledSport.icon || ""} ${todaysScheduledSport.name}`
+                : todaysScheduledDay && todaysScheduledDay !== "rest"
+                  ? `Following workout schedule · today is ${activeProgram?.days?.find((d) => d.id === todaysScheduledDay)?.name || "a training"} day`
+                  : "Following workout schedule · today is a rest day"}
+            </span>
           ) : (
-            <>
-              <span>✋ You picked this for today.</span>
-              <button
-                type="button"
-                onClick={() => setDayTypeId(null)}
-                className="border-2 border-ink px-2 py-0.5 hover:bg-ink hover:text-paper"
-              >
-                Follow workout schedule
-              </button>
-            </>
+            <span>
+              Manual override for today · tap{" "}
+              <span style={{ color: dayTypes.find((d) => d.id === autoDayTypeId)?.color || "#2a2419" }}>
+                {dayTypes.find((d) => d.id === autoDayTypeId)?.label || "the auto chip"}
+              </span>{" "}
+              to follow the workout schedule again.
+            </span>
           )}
         </div>
 

@@ -74,12 +74,13 @@ export function AppProvider({ children }) {
     return [];
   });
   const [dayTypeId, setDayTypeId] = useState(() => {
-    // Stored ids may be legacy (push/pull/legs/day1/…); anything that isn't
-    // the literal "rest" maps to "workout" now. Missing key → caller will
-    // re-derive from today's program in an effect below.
+    // Stored ids may be legacy (push/pull/legs/day1/…). Today's valid set
+    // is exactly { rest, workout, sports }; everything else falls back to
+    // workout. Missing key → caller stays in auto-follow mode.
     const stored = load(`dayType:${dateKey}`, null);
     if (stored == null) return null;
-    return stored === "rest" ? "rest" : "workout";
+    if (stored === "rest" || stored === "workout" || stored === "sports") return stored;
+    return "workout";
   });
   const [medsTakenToday, setMedsTakenToday] = useState(() => load(`meds:taken:${dateKey}`, []));
   // Custom one-off reminders the user adds to today. Shape:
