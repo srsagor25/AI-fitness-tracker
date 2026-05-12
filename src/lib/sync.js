@@ -78,6 +78,29 @@ export async function logout() {
   if (typeof window !== "undefined") window.location.reload();
 }
 
+// Wipe everything for the current user — local cache, and (if signed in)
+// every kv row on the server too — then reload so the app boots into
+// first-run onboarding. The session itself is preserved, so the user
+// stays signed in and starts adding fresh data under the same account.
+export async function resetAll() {
+  // Detach the write hook first so the upcoming clearAllLocal() doesn't
+  // dispatch a flood of "delete" calls to the server in parallel with
+  // the bulk /api/kv/clear we're about to issue.
+  setWriteHook(null);
+  const s = await authStatus();
+  if (s?.authed) {
+    try {
+      await jfetch("/api/kv/clear", { method: "POST" });
+    } catch (e) {
+      // Re-attach so the user isn't silently desynced if we bail out.
+      attachHook();
+      throw e;
+    }
+  }
+  clearAllLocal();
+  if (typeof window !== "undefined") window.location.reload();
+}
+
 // ----- Sync engine internals -----
 
 const SKIP_PREFIXES = ["notify:"];
