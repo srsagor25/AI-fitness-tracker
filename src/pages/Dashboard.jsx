@@ -86,6 +86,10 @@ export function Dashboard({ setTab }) {
     setSleepEntry,
     sportsLog,
     logDose,
+    removeLastDoseInCategory,
+    removeTodaysLastSports,
+    quickMarkWorkoutDone,
+    removeTodaysWorkout,
     burnSuggestion,
     customTasks,
     addCustomTask,
@@ -657,20 +661,90 @@ export function Dashboard({ setTab }) {
                 );
               };
               const cd = r.countdown != null ? reminders.fmtCountdown(r.countdown) : null;
-              // Per-domain quick action — keeps the user on Today for fast logs.
+              // Per-domain quick action — keeps the user on Today for fast
+              // logs. Every reminder where the action is meaningful should
+              // offer BOTH "Done" (when not yet done) AND "Undo" (when
+              // already done), available regardless of how late the user
+              // is — late-but-recoverable is still recoverable.
+              const btnCls =
+                "font-mono text-[10px] uppercase tracking-[0.2em] border-2 border-ink px-2 py-1 hover:bg-ink hover:text-paper whitespace-nowrap";
               let quickAction = null;
               if (r.domain === "steps") {
+                // Steps don't have a binary "done" state, but ± symmetry
+                // mirrors the done/undo pattern. The +1k stays primary;
+                // the −1k appears only when there's something to undo.
+                quickAction = (
+                  <div className="flex gap-1">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        bumpSteps(1000);
+                      }}
+                      className={btnCls}
+                      title="Add 1000 steps"
+                    >
+                      +1k
+                    </button>
+                    {steps >= 1000 && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          bumpSteps(-1000);
+                        }}
+                        className={btnCls}
+                        title="Subtract 1000 steps"
+                      >
+                        −1k
+                      </button>
+                    )}
+                  </div>
+                );
+              } else if (
+                r.id === "workout" &&
+                r.urgency === "done" &&
+                history.some(
+                  (h) => new Date(h.date).toDateString() === new Date(now).toDateString(),
+                )
+              ) {
+                // Workout completed today (real session OR quick-mark) —
+                // Undo removes the most recent entry from today. Rest
+                // days also report "done" but have no history entry, so
+                // the guard above keeps the button off rest days.
                 quickAction = (
                   <button
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      bumpSteps(1000);
+                      removeTodaysWorkout();
                     }}
-                    className="font-mono text-[10px] uppercase tracking-[0.2em] border-2 border-ink px-2 py-1 hover:bg-ink hover:text-paper"
-                    title="Add 1000 steps"
+                    className={btnCls}
+                    title="Remove today's workout from history"
                   >
-                    +1k
+                    Undo ↶
+                  </button>
+                );
+              } else if (
+                r.id === "workout" &&
+                !currentSession &&
+                todaysDay &&
+                (r.urgency === "late" || r.urgency === "scheduled" || r.urgency === "soon")
+              ) {
+                // Workout scheduled (possibly late) but not yet started —
+                // one-tap Done logs a minimal history entry. The proper
+                // sets-logging flow still lives on the Workout tab.
+                quickAction = (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      quickMarkWorkoutDone();
+                    }}
+                    className={btnCls}
+                    title="Mark today's workout as done without logging sets"
+                  >
+                    Done ✓
                   </button>
                 );
               } else if (r.domain === "diet" && r.urgency !== "done" && r.plannedPreset) {
@@ -687,9 +761,30 @@ export function Dashboard({ setTab }) {
                         items: r.plannedPreset.items,
                       });
                     }}
-                    className="font-mono text-[10px] uppercase tracking-[0.2em] border-2 border-ink px-2 py-1 hover:bg-ink hover:text-paper whitespace-nowrap"
+                    className={btnCls}
                   >
                     Take ✓
+                  </button>
+                );
+              } else if (
+                r.domain === "diet" &&
+                r.urgency !== "done" &&
+                !r.plannedPreset
+              ) {
+                // No preset planned for this slot — can't one-tap log it,
+                // but route the user to the Diet tab so Done is still
+                // reachable in one tap. Late slots count the same.
+                quickAction = (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setTab("diet");
+                    }}
+                    className={btnCls}
+                    title="Open Diet tab to log this slot"
+                  >
+                    Log →
                   </button>
                 );
               } else if (
@@ -709,10 +804,30 @@ export function Dashboard({ setTab }) {
                       const lastId = r.loggedMealIds[r.loggedMealIds.length - 1];
                       if (lastId) removeMealFromSlot(r.slot, lastId);
                     }}
-                    className="font-mono text-[10px] uppercase tracking-[0.2em] border-2 border-ink px-2 py-1 hover:bg-ink hover:text-paper whitespace-nowrap"
+                    className={btnCls}
                     title="Remove the most recent meal logged for this slot"
                   >
-                    Unlog ×
+                    Undo ↶
+                  </button>
+                );
+              } else if (
+                (r.domain === "med" || r.domain === "supplement") &&
+                r.urgency === "done"
+              ) {
+                // Caught up — give the user a one-tap Undo for the most
+                // recent dose in this category in case they tapped Take
+                // by mistake (or didn't actually swallow it).
+                quickAction = (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeLastDoseInCategory(r.domain);
+                    }}
+                    className={btnCls}
+                    title="Remove the most recent dose"
+                  >
+                    Undo ↶
                   </button>
                 );
               } else if (
@@ -733,13 +848,50 @@ export function Dashboard({ setTab }) {
                         e.stopPropagation();
                         logDose(upcoming);
                       }}
-                      className="font-mono text-[10px] uppercase tracking-[0.2em] border-2 border-ink px-2 py-1 hover:bg-ink hover:text-paper whitespace-nowrap"
+                      className={btnCls}
                     >
                       Take ✓
                     </button>
                   );
                 }
+              } else if (r.domain === "sports" && r.urgency === "done") {
+                // Sports logged today — Undo removes the most recent
+                // session so a mistapped log can be cleaned up without
+                // opening the Sports tab.
+                quickAction = (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeTodaysLastSports();
+                    }}
+                    className={btnCls}
+                    title="Remove today's most recent sports entry"
+                  >
+                    Undo ↶
+                  </button>
+                );
+              } else if (r.domain === "sports" && r.urgency !== "done") {
+                // No sports logged yet — sport selection + duration need
+                // the full form, so route to the Sports tab. Late doesn't
+                // change this; the Log button stays available.
+                quickAction = (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setTab("activity/sports");
+                    }}
+                    className={btnCls}
+                    title="Open Sports tab to log a session"
+                  >
+                    Log →
+                  </button>
+                );
               } else if (r.domain === "task" && r.taskId) {
+                // Toggle button doubles as Done (when pending) and Undo
+                // (when already done). Trash icon stays available to
+                // delete the task entirely.
                 quickAction = (
                   <div className="flex gap-1">
                     <button
@@ -748,13 +900,13 @@ export function Dashboard({ setTab }) {
                         e.stopPropagation();
                         toggleCustomTask(r.taskId);
                       }}
-                      className={`font-mono text-[10px] uppercase tracking-[0.2em] border-2 border-ink px-2 py-1 ${
+                      className={
                         r.urgency === "done"
-                          ? "bg-ink text-paper"
-                          : "hover:bg-ink hover:text-paper"
-                      }`}
+                          ? `${btnCls} bg-ink text-paper`
+                          : btnCls
+                      }
                     >
-                      {r.urgency === "done" ? "✓" : "Mark"}
+                      {r.urgency === "done" ? "Undo ↶" : "Done ✓"}
                     </button>
                     <button
                       type="button"
@@ -762,7 +914,7 @@ export function Dashboard({ setTab }) {
                         e.stopPropagation();
                         removeCustomTask(r.taskId);
                       }}
-                      className="font-mono text-[10px] uppercase tracking-[0.2em] border-2 border-ink px-2 py-1 hover:bg-ink hover:text-paper"
+                      className={btnCls}
                       title="Delete task"
                     >
                       ×

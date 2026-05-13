@@ -1062,6 +1062,22 @@ export function AppProvider({ children }) {
     setMedsTakenToday((prev) => prev.filter((d) => d.id !== doseId));
   }
 
+  // Remove the most recent dose logged today for a given category
+  // ("med" | "supplement"). Wired to the Undo button on the Meds/Supps
+  // reminder card so the user can revert a tapped-by-mistake Take.
+  function removeLastDoseInCategory(category) {
+    setMedsTakenToday((prev) => {
+      const idx = [...prev]
+        .map((d, i) => ({ d, i }))
+        .filter(({ d }) => (d.category || "med") === category)
+        .map(({ i }) => i)
+        .pop();
+      if (idx == null) return prev;
+      return prev.filter((_, i) => i !== idx);
+    });
+    showSnack(`Undid last ${category === "supplement" ? "supp" : "med"} dose`);
+  }
+
   function toggleCoffee(idx) {
     setCoffee((prev) => {
       const next = [...prev];
@@ -1181,6 +1197,53 @@ export function AppProvider({ children }) {
     setHistory([]);
   }
 
+  // Quick-mark today's scheduled workout as done from the Today reminders
+  // card. Records a minimal history entry (no sets) so it counts toward the
+  // workout streak and Coach derivations. The user can still open the full
+  // session in the Workout tab later if they want to log actual sets — that
+  // path creates its own normal entry.
+  function quickMarkWorkoutDone() {
+    if (!todaysDay) return;
+    const entry = {
+      id: uid("s"),
+      date: Date.now(),
+      programId: activeProgram.id,
+      programName: activeProgram.name,
+      dayId: todaysDay.id,
+      dayName: todaysDay.name,
+      // 0s and empty sets mark this as a quick-confirm vs an actual logged
+      // session; Coach + History UI already handle empty exercise arrays.
+      durationSec: 0,
+      totalSets: 0,
+      totalReps: 0,
+      totalVolume: 0,
+      exercises: [],
+      quickMarked: true,
+    };
+    setHistory((h) => [entry, ...h]);
+    showSnack("Marked workout done", {
+      undo: () => {
+        setHistory((h) => h.filter((x) => x.id !== entry.id));
+        showSnack("Undone");
+      },
+    });
+  }
+
+  // Remove today's most recent workout session (used by the reminder
+  // Undo when the user wants to revert either a quick-mark or a real
+  // session they finished by mistake).
+  function removeTodaysWorkout() {
+    const todayK = dateKey;
+    let removed = null;
+    setHistory((h) => {
+      const idx = h.findIndex((x) => todayKey(new Date(x.date)) === todayK);
+      if (idx < 0) return h;
+      removed = h[idx];
+      return h.filter((_, i) => i !== idx);
+    });
+    if (removed) showSnack("Workout removed from today");
+  }
+
   // ----- Sports mutators -----
   function addSportSession(payload) {
     const sport = sportsList.find((s) => s.id === payload.sportId);
@@ -1213,6 +1276,19 @@ export function AppProvider({ children }) {
   }
   function removeSportSession(id) {
     setSportsLog((prev) => prev.filter((s) => s.id !== id));
+  }
+
+  // Remove today's most recent sports entry — wired to the Undo button
+  // on the Sports reminder card. Older entries are left alone.
+  function removeTodaysLastSports() {
+    setSportsLog((prev) => {
+      const todayIdx = prev.findIndex(
+        (s) => new Date(s.date).toDateString() === new Date().toDateString(),
+      );
+      if (todayIdx < 0) return prev;
+      return prev.filter((_, i) => i !== todayIdx);
+    });
+    showSnack("Removed last sports entry");
   }
   function clearSportsLog() {
     setSportsLog([]);
@@ -1401,9 +1477,10 @@ export function AppProvider({ children }) {
     history, clearHistory,
     currentSession, startSession, pauseSession, resumeSession, logSet, unlogSet,
     finishSession, cancelSession,
+    quickMarkWorkoutDone, removeTodaysWorkout,
     todaysDay, todaysDayId, todaysWorkoutKcal,
     // sports
-    sportsList, sportsLog, addSportSession, removeSportSession, clearSportsLog,
+    sportsList, sportsLog, addSportSession, removeSportSession, removeTodaysLastSports, clearSportsLog,
     saveSport, deleteSport, todaysSportsKcal, todaysStepsKcal, todaysActivityKcal,
     effectiveStepGoal, sportsStepCredit, baseStepGoal,
     burnSuggestion,
@@ -1422,7 +1499,7 @@ export function AppProvider({ children }) {
     customFoods, updateCustomFood, resetCustomFood,
     // medications
     meds, saveMedication, deleteMedication,
-    medsTakenToday, logDose, unlogDose,
+    medsTakenToday, logDose, unlogDose, removeLastDoseInCategory,
     // misc
     showSnack, snackbar,
     shouldSuggestLightDinner,
