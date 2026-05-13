@@ -86,6 +86,15 @@ export function AppProvider({ children }) {
   // Custom one-off reminders the user adds to today. Shape:
   // { id, label, detail?, dueAt? (HH:MM), done, ts }
   const [customTasks, setCustomTasks] = useState(() => load(`tasks:${dateKey}`, []));
+  // Per-day "marked done" flags for reminders that don't have a natural
+  // log entry — e.g. user ate something off-plan and just wants the
+  // Breakfast slot to stop nagging without writing a placeholder meal,
+  // or they did a quick run and don't want to fill out the Sports form.
+  // Shape: { breakfast?, lunch?, shake?, dinner?, sports? } → boolean.
+  // Real log entries still win — if meals[slot].length > 0 or
+  // sportsToday.length > 0, the reminder is "done" from the log alone
+  // and this flag is irrelevant.
+  const [markedDone, setMarkedDone] = useState(() => load(`markedDone:${dateKey}`, {}));
   // Sleep: { hours, bedTime?, wakeTime?, quality? } stored per day.
   const [sleep, setSleep] = useState(() => load(`sleep:${dateKey}`, null));
 
@@ -275,6 +284,7 @@ export function AppProvider({ children }) {
   }, [dayTypeId, dateKey]);
   useEffect(() => save(`meds:taken:${dateKey}`, medsTakenToday), [medsTakenToday, dateKey]);
   useEffect(() => save(`tasks:${dateKey}`, customTasks), [customTasks, dateKey]);
+  useEffect(() => save(`markedDone:${dateKey}`, markedDone), [markedDone, dateKey]);
   useEffect(() => {
     if (sleep) save(`sleep:${dateKey}`, sleep);
     else save(`sleep:${dateKey}`, null);
@@ -807,6 +817,7 @@ export function AppProvider({ children }) {
     setWaterLog([]);
     setMedsTakenToday([]);
     setCustomTasks([]);
+    setMarkedDone({});
     showSnack("Day cleared");
   }
 
@@ -1278,6 +1289,20 @@ export function AppProvider({ children }) {
     setSportsLog((prev) => prev.filter((s) => s.id !== id));
   }
 
+  // Set / clear the per-day "marked done" flag for a reminder key.
+  // Used by the Done ✓ button on slots without a real log entry — keeps
+  // the user's actual logs clean (no zero-kcal placeholder meals) while
+  // still flipping the reminder to a done state.
+  function setMarkedDoneFlag(key, value) {
+    if (!key) return;
+    setMarkedDone((prev) => {
+      const next = { ...prev };
+      if (value) next[key] = true;
+      else delete next[key];
+      return next;
+    });
+  }
+
   // Remove today's most recent sports entry — wired to the Undo button
   // on the Sports reminder card. Older entries are left alone.
   function removeTodaysLastSports() {
@@ -1451,6 +1476,7 @@ export function AppProvider({ children }) {
     waterLog, addWaterEntry, removeWaterEntry,
     sleep, setSleepEntry, clearSleep,
     customTasks, addCustomTask, toggleCustomTask, removeCustomTask,
+    markedDone, setMarkedDoneFlag,
     dayTypeId: effectiveDayTypeId,
     setDayTypeId,
     dayType, dayTypes,

@@ -95,6 +95,8 @@ export function Dashboard({ setTab }) {
     addCustomTask,
     toggleCustomTask,
     removeCustomTask,
+    markedDone,
+    setMarkedDoneFlag,
     plan,
     addMealToSlot,
     removeMealFromSlot,
@@ -202,7 +204,11 @@ export function Dashboard({ setTab }) {
     const todaysPlan = (plan && plan[dateKey]) || {};
     for (const slot of ["breakfast", "lunch", "shake", "dinner"]) {
       const slotMeals = meals[slot] || [];
-      const logged = slotMeals.length > 0;
+      const realLogged = slotMeals.length > 0;
+      // The slot can also be "done" via a manual Done ✓ tap that doesn't
+      // create a placeholder meal (keeps the actual log clean).
+      const flagged = !!markedDone[slot];
+      const logged = realLogged || flagged;
       const t = timeToToday(slotMealTimes[slot]);
       const ms = t ? t - nowDate : null;
 
@@ -216,8 +222,10 @@ export function Dashboard({ setTab }) {
       }
 
       let detail;
-      if (logged) {
+      if (realLogged) {
         detail = `Logged ✓ · ${slotMeals.map((m) => m.name).slice(0, 2).join(", ")}${slotMeals.length > 2 ? ` +${slotMeals.length - 2}` : ""}`;
+      } else if (flagged) {
+        detail = "Marked done";
       } else if (plannedPreset) {
         const at = t ? ` · ${slotMealTimes[slot]}` : "";
         detail = `${plannedPreset.icon || ""} ${plannedPreset.name}${at}`.trim();
@@ -246,7 +254,11 @@ export function Dashboard({ setTab }) {
         // When the slot is logged, hand the reminder the meal ids so an
         // "Unlog last" button can remove the most recent entry without
         // the user navigating to the Diet tab.
-        loggedMealIds: logged ? slotMeals.map((m) => m.id) : [],
+        loggedMealIds: realLogged ? slotMeals.map((m) => m.id) : [],
+        // Whether "done" came from the manual flag (vs a real meal). The
+        // Undo button uses this to decide: clear the flag, or remove a
+        // real meal entry.
+        flaggedDone: flagged,
       });
     }
 
@@ -403,10 +415,13 @@ export function Dashboard({ setTab }) {
     });
 
     // Sports — surface today's sessions; if none, show as info so the user
-    // can jump to log one.
+    // can jump to log one. The reminder is also "done" when the user
+    // tapped the manual Done ✓ button (no real session logged) — same
+    // pattern as meal slots.
     const sportsToday = (sportsLog || []).filter(
       (s) => new Date(s.date).toDateString() === nowDate.toDateString(),
     );
+    const sportsFlagged = !!markedDone.sports;
     if (sportsToday.length > 0) {
       const totalKcal = sportsToday.reduce((s, x) => s + (Number(x.kcal) || 0), 0);
       list.push({
@@ -419,6 +434,19 @@ export function Dashboard({ setTab }) {
         countdown: null,
         urgency: "done",
         targetTab: "activity/sports",
+        flaggedDone: false,
+      });
+    } else if (sportsFlagged) {
+      list.push({
+        id: "sports",
+        icon: Flame,
+        domain: "sports",
+        label: "Sports done",
+        detail: "Marked done",
+        countdown: null,
+        urgency: "done",
+        targetTab: "activity/sports",
+        flaggedDone: true,
       });
     } else {
       list.push({
@@ -430,6 +458,7 @@ export function Dashboard({ setTab }) {
         countdown: null,
         urgency: "info",
         targetTab: "activity/sports",
+        flaggedDone: false,
       });
     }
 
@@ -479,6 +508,7 @@ export function Dashboard({ setTab }) {
     steps,
     sportsLog,
     customTasks,
+    markedDone,
     plan,
     dateKey,
   ]);
@@ -771,41 +801,58 @@ export function Dashboard({ setTab }) {
                 r.urgency !== "done" &&
                 !r.plannedPreset
               ) {
-                // No preset planned for this slot — can't one-tap log it,
-                // but route the user to the Diet tab so Done is still
-                // reachable in one tap. Late slots count the same.
+                // No preset planned for this slot — offer BOTH a quick
+                // Done ✓ (sets a per-day flag, no fake meal entry) and a
+                // Log → that navigates to the Diet tab for proper logging.
+                // Late slots count the same — both buttons stay visible.
                 quickAction = (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setTab("diet");
-                    }}
-                    className={btnCls}
-                    title="Open Diet tab to log this slot"
-                  >
-                    Log →
-                  </button>
+                  <div className="flex gap-1">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setMarkedDoneFlag(r.slot, true);
+                      }}
+                      className={btnCls}
+                      title="Mark this slot as done without logging details"
+                    >
+                      Done ✓
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setTab("diet");
+                      }}
+                      className={btnCls}
+                      title="Open Diet tab to log this slot"
+                    >
+                      Log →
+                    </button>
+                  </div>
                 );
               } else if (
                 r.domain === "diet" &&
                 r.urgency === "done" &&
-                r.loggedMealIds &&
-                r.loggedMealIds.length > 0
+                ((r.loggedMealIds && r.loggedMealIds.length > 0) || r.flaggedDone)
               ) {
-                // Quick "Unlog last" when the slot is marked done — for
-                // when the user accidentally tapped Take ✓ or just wants
-                // to revert a meal they haven't actually eaten yet.
+                // Undo: prefer removing the most recent real meal entry;
+                // if the slot was only "marked done" via the flag, clear
+                // the flag instead.
                 quickAction = (
                   <button
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      const lastId = r.loggedMealIds[r.loggedMealIds.length - 1];
-                      if (lastId) removeMealFromSlot(r.slot, lastId);
+                      if (r.loggedMealIds && r.loggedMealIds.length > 0) {
+                        const lastId = r.loggedMealIds[r.loggedMealIds.length - 1];
+                        if (lastId) removeMealFromSlot(r.slot, lastId);
+                      } else if (r.flaggedDone) {
+                        setMarkedDoneFlag(r.slot, false);
+                      }
                     }}
                     className={btnCls}
-                    title="Remove the most recent meal logged for this slot"
+                    title="Undo the most recent action on this slot"
                   >
                     Undo ↶
                   </button>
@@ -855,38 +902,53 @@ export function Dashboard({ setTab }) {
                   );
                 }
               } else if (r.domain === "sports" && r.urgency === "done") {
-                // Sports logged today — Undo removes the most recent
-                // session so a mistapped log can be cleaned up without
-                // opening the Sports tab.
+                // Sports is marked done. If it's a real session, Undo
+                // removes the most recent one; if it's the flag-only
+                // path (no real session logged), Undo clears the flag.
                 quickAction = (
                   <button
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      removeTodaysLastSports();
+                      if (r.flaggedDone) setMarkedDoneFlag("sports", false);
+                      else removeTodaysLastSports();
                     }}
                     className={btnCls}
-                    title="Remove today's most recent sports entry"
+                    title="Undo today's most recent sports action"
                   >
                     Undo ↶
                   </button>
                 );
               } else if (r.domain === "sports" && r.urgency !== "done") {
-                // No sports logged yet — sport selection + duration need
-                // the full form, so route to the Sports tab. Late doesn't
-                // change this; the Log button stays available.
+                // No sports logged yet — offer BOTH Done ✓ (per-day
+                // flag so the reminder flips done without writing a
+                // placeholder session) and Log → (navigate to the
+                // Sports tab to log a proper session).
                 quickAction = (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setTab("activity/sports");
-                    }}
-                    className={btnCls}
-                    title="Open Sports tab to log a session"
-                  >
-                    Log →
-                  </button>
+                  <div className="flex gap-1">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setMarkedDoneFlag("sports", true);
+                      }}
+                      className={btnCls}
+                      title="Mark sports as done without logging details"
+                    >
+                      Done ✓
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setTab("activity/sports");
+                      }}
+                      className={btnCls}
+                      title="Open Sports tab to log a session"
+                    >
+                      Log →
+                    </button>
+                  </div>
                 );
               } else if (r.domain === "task" && r.taskId) {
                 // Toggle button doubles as Done (when pending) and Undo
