@@ -9,6 +9,7 @@ import { useApp } from "../store/AppContext.jsx";
 import { Card, CardHeader, Stat } from "../components/ui/Card.jsx";
 import { Button } from "../components/ui/Button.jsx";
 import { Chip, ProgressBar } from "../components/ui/Field.jsx";
+import { QuickLogModal } from "../components/QuickLogModal.jsx";
 import {
   bmr,
   tdee,
@@ -106,6 +107,8 @@ export function Dashboard({ setTab }) {
   const [newTaskLabel, setNewTaskLabel] = useState("");
   const [newTaskTime, setNewTaskTime] = useState("");
   const [notifyState, setNotifyState] = useState(() => notifyPermission());
+  // Active quick-log popup. shape: { kind: "meal" | "sports", slot? }
+  const [quickLog, setQuickLog] = useState(null);
 
   const remaining = dailyTargetKcal - dayTotals.kcal;
 
@@ -803,8 +806,9 @@ export function Dashboard({ setTab }) {
               ) {
                 // No preset planned for this slot — offer BOTH a quick
                 // Done ✓ (sets a per-day flag, no fake meal entry) and a
-                // Log → that navigates to the Diet tab for proper logging.
-                // Late slots count the same — both buttons stay visible.
+                // Log → that opens the one-tap quick-log popup. The popup
+                // lets the user pick any preset or type a custom kcal/
+                // protein entry without leaving Today.
                 quickAction = (
                   <div className="flex gap-1">
                     <button
@@ -822,10 +826,10 @@ export function Dashboard({ setTab }) {
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        setTab("diet");
+                        setQuickLog({ kind: "meal", slot: r.slot });
                       }}
                       className={btnCls}
-                      title="Open Diet tab to log this slot"
+                      title="Open one-tap log popup"
                     >
                       Log →
                     </button>
@@ -921,9 +925,9 @@ export function Dashboard({ setTab }) {
                 );
               } else if (r.domain === "sports" && r.urgency !== "done") {
                 // No sports logged yet — offer BOTH Done ✓ (per-day
-                // flag so the reminder flips done without writing a
-                // placeholder session) and Log → (navigate to the
-                // Sports tab to log a proper session).
+                // flag, no placeholder session) and Log → (opens the
+                // quick-log popup: pick duration + sport, single tap
+                // logs the session without leaving Today).
                 quickAction = (
                   <div className="flex gap-1">
                     <button
@@ -941,10 +945,10 @@ export function Dashboard({ setTab }) {
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        setTab("activity/sports");
+                        setQuickLog({ kind: "sports" });
                       }}
                       className={btnCls}
-                      title="Open Sports tab to log a session"
+                      title="Open one-tap log popup"
                     >
                       Log →
                     </button>
@@ -1039,6 +1043,16 @@ export function Dashboard({ setTab }) {
           </ul>
         )}
       </Card>
+
+      {/* One-tap log popup: triggered by the Log → button on meal / sports
+          reminders. Centralized here so a single instance handles every
+          reminder row. */}
+      <QuickLogModal
+        open={!!quickLog}
+        kind={quickLog?.kind}
+        slot={quickLog?.slot}
+        onClose={() => setQuickLog(null)}
+      />
 
       {/* One-tap entries — moved directly under the Reminders card so the
           two main "log something now" surfaces sit together. */}
