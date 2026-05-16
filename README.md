@@ -12,28 +12,27 @@ A unified diet + training tracker that merges the original **Diet & Grocery Mana
 
 ## AI provider setup (Vercel)
 
-Photo macros (`/api/analyze-photo`) and eat-out suggestions (`/api/suggest-eatout`) call an AI provider server-side, so the API key lives only in Vercel environment variables — never in the browser. Two providers are supported, set whichever you have:
+Photo macros (`/api/analyze-photo`) and eat-out suggestions (`/api/suggest-eatout`) call an AI provider server-side, so the API key lives only in Vercel environment variables — never in the browser. Three provider routes are supported, set whichever you have. First env var present wins (priority top → bottom):
 
 | Variable | Provider | Notes |
 |---|---|---|
-| `OPENAI_API_KEY` | OpenAI | Default model `gpt-4o-mini`; override via `OPENAI_MODEL` |
-| `GEMINI_API_KEY` | Google Gemini | Default model `gemini-2.0-flash` (free-tier compatible); override via `GEMINI_MODEL` |
+| `OPENROUTER_API_KEY` | OpenRouter | **Recommended.** Defaults to `google/gemini-2.0-flash-exp:free` — free, vision-capable. Override via `OPENROUTER_MODEL` to switch to Claude, Llama, etc. |
+| `OPENAI_API_KEY` | OpenAI (or any OpenAI-compatible API) | Default model `gpt-4o-mini`; override via `OPENAI_MODEL` / `OPENAI_BASE_URL`. |
+| `GEMINI_API_KEY` | Google Gemini direct | Default model `gemini-2.0-flash`; override via `GEMINI_MODEL`. |
 
-If both are set, OpenAI wins. Add the variable in Vercel project → Settings → Environment Variables → redeploy.
+Add the variable in Vercel project → Settings → Environment Variables → tick all three environments (Production / Preview / Development) → redeploy. Without a redeploy, env-var changes don't reach the running serverless functions.
 
-### Routing through OpenRouter (free Gemini / Claude / Llama / …)
+### Recommended: free Gemini via OpenRouter
 
-OpenRouter exposes an OpenAI-compatible API, so the same `OPENAI_API_KEY` branch works against it — just three env vars:
+For zero monthly cost, set just one variable:
 
-| Variable | Value |
-|---|---|
-| `OPENAI_API_KEY` | your OpenRouter key (`sk-or-v1-…`) |
-| `OPENAI_BASE_URL` | `https://openrouter.ai/api/v1` |
-| `OPENAI_MODEL` | any OpenRouter route — e.g. `google/gemini-2.0-flash-exp:free`, `anthropic/claude-3.5-sonnet`, `meta-llama/llama-3.3-70b-instruct:free` |
+```
+OPENROUTER_API_KEY = sk-or-v1-…
+```
 
-Optional: `OPENROUTER_REFERER` + `OPENROUTER_TITLE` (set automatically with sensible defaults; OpenRouter uses them for leaderboard attribution).
+The endpoints will route to `google/gemini-2.0-flash-exp:free` automatically — supports image input for photo macros and structured JSON for eat-out suggestions. Want a different model? Add `OPENROUTER_MODEL = anthropic/claude-3.5-sonnet` (or any other route from https://openrouter.ai/models).
 
-Free-tier sweet spot for this app's vision + JSON tasks is `google/gemini-2.0-flash-exp:free` — supports image input, decent at structured output, no cost.
+Optional OpenRouter polish: `OPENROUTER_REFERER` + `OPENROUTER_TITLE` (set automatically with sensible defaults; OpenRouter uses them for leaderboard attribution).
 
 ## Cloud sync (Postgres) — optional
 
