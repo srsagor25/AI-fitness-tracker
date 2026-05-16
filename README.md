@@ -21,6 +21,20 @@ Photo macros (`/api/analyze-photo`) and eat-out suggestions (`/api/suggest-eatou
 
 If both are set, OpenAI wins. Add the variable in Vercel project → Settings → Environment Variables → redeploy.
 
+### Routing through OpenRouter (free Gemini / Claude / Llama / …)
+
+OpenRouter exposes an OpenAI-compatible API, so the same `OPENAI_API_KEY` branch works against it — just three env vars:
+
+| Variable | Value |
+|---|---|
+| `OPENAI_API_KEY` | your OpenRouter key (`sk-or-v1-…`) |
+| `OPENAI_BASE_URL` | `https://openrouter.ai/api/v1` |
+| `OPENAI_MODEL` | any OpenRouter route — e.g. `google/gemini-2.0-flash-exp:free`, `anthropic/claude-3.5-sonnet`, `meta-llama/llama-3.3-70b-instruct:free` |
+
+Optional: `OPENROUTER_REFERER` + `OPENROUTER_TITLE` (set automatically with sensible defaults; OpenRouter uses them for leaderboard attribution).
+
+Free-tier sweet spot for this app's vision + JSON tasks is `google/gemini-2.0-flash-exp:free` — supports image input, decent at structured output, no cost.
+
 ## Cloud sync (Postgres) — optional
 
 Without this section the app runs purely on browser localStorage (per-device, ~5 MB cap). Configure these three env vars to add a personal Postgres backup with explicit Push / Pull buttons on the Profile tab.
